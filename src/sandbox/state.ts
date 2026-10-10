@@ -1,4 +1,7 @@
-// Sandbox state machine: marketplace bookings, simulated clock, camera events, photos, invoice, captures.
+// Sandbox state machine: marketplace bookings, simulated clock, camera events, photos, invoice, charges, warranty.
+// Booking shapes follow the Home Services SPI (Browse-and-Choose discovery + CreateBooking stage, which the SPI
+// documents as experimental and for Auto-Match: our combination). Invoice, photos, charges and warranty claims are
+// partner-side extensions, not Alexa SPIs.
 // Pure and deterministic: no wall clock, no randomness. Ids come from counters reset by reset().
 // The HTTP layer (server.ts) only parses requests, calls these methods and delivers webhooks.
 import type { BookingStatus, Charge, Photo, Professional, ScopeItem, ScopeOfWork } from "../core/types.ts";
@@ -22,6 +25,14 @@ export const MARKETPLACE_SERVICE = "Marketplace (Home Services SPI shapes, sandb
 export const PHOTOS_SERVICE = "Marketplace job photos (sandbox)";
 export const HISTORY_PAGE_SIZE = 50;
 
+export type CardOnFile = { id: string; brand: string; last_digits: string; mode: "sandbox" };
+/** Home Services SPI Purchase: charges, policies (CANCELLATION), payment instruments (CARD). Amounts in cents. */
+export interface PurchaseDetails {
+  charges: { chargeDescription: string; chargeCategory: "SERVICE"; amount: number; quantity: number }[];
+  policies: { policyType: "CANCELLATION"; policyDescription: string; policyUrl: string }[];
+  paymentInstruments: { paymentInstrumentType: "CARD"; paymentInstrumentId: string; wallet: string }[];
+}
+
 export interface Booking {
   alexaBookingId: string;
   partnerBookingId: string;
@@ -37,7 +48,11 @@ export interface Booking {
   scope: ScopeOfWork;
   visitLogging: { proAgreed: boolean; homeownerAgreed: boolean; what: string };
   doorCode: { validFrom: number; validTo: number; simulated: true; note: string };
-  payment: { cardOnFile: { label: string; last2: string; mode: "sandbox" }; refundPolicy: string };
+  payment: { cardOnFile: CardOnFile; refundPolicy: string; cancellationPolicy: string };
+  purchaseDetails: PurchaseDetails;
+  /** "service" for the booked job, "warranty_return" for a $0.00 return visit under the pro's labor warranty. */
+  kind: "service" | "warranty_return";
+  warrantyFor: string | null;
   createdAt: number;
   confirmedAt: number | null;
   cancelledAt: number | null;
@@ -61,8 +76,21 @@ export interface Capture {
   remaining: number;
   status: "CAPTURED";
   capturedAt: number;
-  paymentMethod: { label: string; last2: string; mode: "sandbox" };
+  paymentMethod: CardOnFile;
   idempotencyKey: string | null;
+}
+
+export interface WarrantyOffer {
+  partnerBookingId: string;
+  businessName: string;
+  covered: boolean;
+  reason: string;
+  laborWarrantyDays: number;
+  jobDate: number;
+  warrantyEnds: number;
+  returnVisit: { start: number; end: number };
+  amount: 0;
+  booking: Booking | null; // set once the return visit is booked
 }
 
 export interface EmittedEvent {
@@ -152,13 +180,70 @@ export class SandboxState {
       },
       visitLogging: { proAgreed: pro.visitLoggingAgreed, homeownerAgreed: false, what: VISIT_LOGGING_WHAT },
       doorCode: { validFrom: job.doorCode.validFrom, validTo: job.doorCode.validTo, simulated: true, note: job.doorCode.note },
-      payment: { cardOnFile: { ...this.scenario.homeowner.cardOnFile }, refundPolicy: pro.refundPolicy },
+      payment: { cardOnFile: this.defaultCard(), refundPolicy: pro.refundPolicy, cancellationPolicy: pro.cancellationPolicy },
+      purchaseDetails: this.#purchase(items, pro.cancellationPolicy, pro.proId),
+      kind: "service",
+      warrantyFor: null,
       createdAt: this.now,
       confirmedAt: null,
       cancelledAt: null,
     };
     this.#bookings.push(b);
     return this.#view(b);
+  }
+
+  defaultCard(): CardOnFile {
+    const c = this.scenario.homeowner.cards.find((x) => x.default)!;
+    return { id: c.id, brand: c.brand, last_digits: c.last_digits, mode: c.mode };
+  }
+
+  #purchase(items: ScopeItem[], cancellationPolicy: string, proId: string): PurchaseDetails {
+    const card = this.defaultCard();
+    return {
+      charges: items.map((i) => ({ chargeDescription: i.description, chargeCategory: "SERVICE", amount: i.price, quantity: i.quantity })),
+      policies: [{ policyType: "CANCELLATION", policyDescription: cancellationPolicy, policyUrl: `https://marketplace.sandbox.example/pros/${proId}/policies#cancellation` }],
+      paymentInstruments: [{ paymentInstrumentType: "CARD", paymentInstrumentId: `${card.brand.charAt(0).toUpperCase()}${card.brand.slice(1)} **** ${card.last_digits}`, wallet: "sandbox" }],
+    };
+  }
+
+  // ---------- warranty (partner-side extension) ----------
+  /** Coverage under the pro's labor warranty, counted from the job date; confirm=true books a $0.00 return visit. */
+  warrantyClaim(req: { partnerBookingId: string; scopeItemIds: string[]; confirm: boolean }): WarrantyOffer {
+    const b = this.#find(req.partnerBookingId);
+    const pro = this.scenario.professionals.find((p) => p.proId === b.proId)!;
+    const status = this.#statusAt(b);
+    const known = new Set(b.scope.items.map((i) => i.id));
+    if (!req.scopeItemIds.length || req.scopeItemIds.some((id) => !known.has(id))) throw new SandboxError(400, "unknown_items", "scopeItemIds must be items of this booking");
+    const jobDate = b.timeSlot.end;
+    const warrantyEnds = jobDate + pro.laborWarrantyDays * 24 * 60 * 60_000;
+    const slot = this.scenario.job.warrantySlot;
+    let covered = true, reason = "covered by the labor warranty";
+    if (status !== "COMPLETED") { covered = false; reason = "the job is not completed"; }
+    else if (pro.laborWarrantyDays === 0) { covered = false; reason = "this pro offers no labor warranty"; }
+    else if (this.now > warrantyEnds) { covered = false; reason = "the labor warranty has ended"; }
+    let booking = this.#bookings.find((x) => x.kind === "warranty_return" && x.warrantyFor === b.partnerBookingId) ?? null;
+    if (req.confirm && covered && !booking) {
+      if (this.now >= slot.start) throw new SandboxError(409, "slot_passed", "the return-visit slot has already started");
+      this.#bookingSeq++;
+      booking = {
+        ...structuredClone(b),
+        alexaBookingId: `warranty-${b.alexaBookingId}`,
+        partnerBookingId: `PB-${1000 + this.#bookingSeq}`,
+        stage: "CONFIRMATION",
+        status: "CONFIRMED",
+        title: `Warranty return visit · ${b.title}`,
+        timeSlot: { start: slot.start, end: slot.end },
+        costEstimate: 0,
+        purchaseDetails: { ...this.#purchase([], pro.cancellationPolicy, pro.proId), charges: [{ chargeDescription: "Warranty return visit (labor warranty)", chargeCategory: "SERVICE", amount: 0, quantity: 1 }] },
+        kind: "warranty_return",
+        warrantyFor: b.partnerBookingId,
+        createdAt: this.now,
+        confirmedAt: this.now,
+        cancelledAt: null,
+      };
+      this.#bookings.push(booking);
+    }
+    return { partnerBookingId: b.partnerBookingId, businessName: b.businessName, covered, reason, laborWarrantyDays: pro.laborWarrantyDays, jobDate, warrantyEnds, returnVisit: { start: slot.start, end: slot.end }, amount: 0, booking: booking ? structuredClone(booking) : null };
   }
 
   getBooking(partnerBookingId: string | undefined): Booking {
@@ -198,7 +283,8 @@ export class SandboxState {
       .map((p) => ({ photoId: p.photoId, scopeItemId: p.scopeItemId, takenAt: p.takenAt, source: { service: PHOTOS_SERVICE, mode: "sandbox", ref: `${b.partnerBookingId}/${p.photoId}` } }));
   }
 
-  capture(req: { partnerBookingId?: string; amount: number; idempotencyKey?: string }): Capture {
+  /** Records a charge against the booking (called by checkout Complete). Never more than the invoice total. */
+  capture(req: { partnerBookingId?: string; amount: number; idempotencyKey?: string; paymentMethod?: CardOnFile }): Capture {
     const b = this.#find(req.partnerBookingId);
     if (req.idempotencyKey) {
       const prior = this.#captures.find((c) => c.idempotencyKey === req.idempotencyKey);
@@ -221,11 +307,15 @@ export class SandboxState {
       remaining: inv.total - captured - req.amount,
       status: "CAPTURED",
       capturedAt: this.now,
-      paymentMethod: { ...b.payment.cardOnFile },
+      paymentMethod: { ...(req.paymentMethod ?? b.payment.cardOnFile) },
       idempotencyKey: req.idempotencyKey ?? null,
     };
     this.#captures.push(c);
     return { ...c };
+  }
+
+  charges(): Capture[] {
+    return this.#captures.map((c) => ({ ...c }));
   }
 
   // ---------- clock + camera ----------
@@ -315,12 +405,12 @@ export class SandboxState {
   }
 
   #activeBooking(): Booking | undefined {
-    return this.#bookings.find((b) => this.#isActive(b));
+    return this.#bookings.find((b) => b.kind === "service" && this.#isActive(b));
   }
 
   /** Visit progress is derived from the clock: arrival -> IN_PROGRESS, departure -> COMPLETED. */
   #statusAt(b: Booking): BookingStatus {
-    if (!this.#isActive(b)) return b.status;
+    if (!this.#isActive(b) || b.kind === "warranty_return") return b.status;
     const visit = this.scenario.doorbell.events.filter((e) => e.requiresBooking && (e.type === "button_press" || e.subType === "human"));
     if (visit.length === 0) return "CONFIRMED";
     const arrival = Math.min(...visit.map((e) => e.at));

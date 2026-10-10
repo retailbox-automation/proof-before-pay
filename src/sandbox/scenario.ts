@@ -12,10 +12,20 @@ export const scenarioSchema = z.object({
   id: z.string().min(1),
   description: z.string(),
   timeZone: z.string().min(1),
-  clock: z.object({ start: epoch, startLocal: z.string(), demoAdvanceTo: epoch, demoAdvanceToLocal: z.string() }),
+  clock: z.object({ start: epoch, startLocal: z.string(), demoAdvanceTo: epoch, demoAdvanceToLocal: z.string(), warrantyAdvanceTo: epoch, warrantyAdvanceToLocal: z.string() }),
   homeowner: z.object({
     ringAccountId: z.string().min(1),
-    cardOnFile: z.object({ label: z.string(), last2: z.string().regex(/^\d{2}$/), mode: z.literal("sandbox") }),
+    // Saved cards for the stored-payment-method checkout handler (partner_card_on_file): brand + last_digits at minimum.
+    cards: z.array(z.object({
+      id: z.string().regex(/^pm_[a-z0-9_]+$/),
+      brand: z.string().min(1),
+      last_digits: z.string().regex(/^\d{4}$/),
+      expiry_month: z.string().regex(/^\d{2}$/),
+      expiry_year: z.string().regex(/^\d{4}$/),
+      default: z.boolean(),
+      behavior: z.enum(["approve", "decline"]), // sandbox card behavior at Complete
+      mode: z.literal("sandbox"),
+    })).min(1),
   }),
   professionals: z.array(z.object({
     proId: z.string().min(1),
@@ -26,6 +36,8 @@ export const scenarioSchema = z.object({
     claimedLicense: z.string().min(1),
     visitLoggingAgreed: z.boolean(),
     refundPolicy: z.string().min(1),
+    cancellationPolicy: z.string().min(1),
+    laborWarrantyDays: z.number().int().nonnegative(),
     prices: z.array(cents),
     costEstimate: cents,
   })).min(1),
@@ -38,6 +50,7 @@ export const scenarioSchema = z.object({
     permit: z.enum(["not_needed", "required"]),
     items: z.array(z.object({ id: z.string(), description: z.string(), quantity: z.number().int().positive(), proof: z.array(z.enum(["photo", "visit"])) })).min(1),
     doorCode: z.object({ validFrom: epoch, validTo: epoch, validFromLocal: z.string(), validToLocal: z.string(), simulated: z.literal(true), note: z.string() }),
+    warrantySlot: z.object({ start: epoch, end: epoch, startLocal: z.string(), endLocal: z.string() }),
   }),
   doorbell: z.object({
     deviceId: z.string().regex(/^[A-Za-z0-9-]+$/, "letters, digits and dashes (the webhook id joins parts with _)"),
@@ -74,6 +87,9 @@ function timePairs(s: Scenario): Array<[string, number, string]> {
   return [
     ["clock.start", s.clock.start, s.clock.startLocal],
     ["clock.demoAdvanceTo", s.clock.demoAdvanceTo, s.clock.demoAdvanceToLocal],
+    ["clock.warrantyAdvanceTo", s.clock.warrantyAdvanceTo, s.clock.warrantyAdvanceToLocal],
+    ["job.warrantySlot.start", s.job.warrantySlot.start, s.job.warrantySlot.startLocal],
+    ["job.warrantySlot.end", s.job.warrantySlot.end, s.job.warrantySlot.endLocal],
     ["job.timeSlot.start", s.job.timeSlot.start, s.job.timeSlot.startLocal],
     ["job.timeSlot.end", s.job.timeSlot.end, s.job.timeSlot.endLocal],
     ["job.doorCode.validFrom", s.job.doorCode.validFrom, s.job.doorCode.validFromLocal],
@@ -100,6 +116,7 @@ export function validateScenario(json: unknown): Scenario {
   }
   for (const p of s.photos) if (p.scopeItemId !== null && !itemIds.has(p.scopeItemId)) throw new Error(`scenario ${s.id}: photo ${p.photoId} tags unknown item ${p.scopeItemId}`);
   if (s.doorbell.events.some((e) => e.type === "motion_detected" && !e.subType)) throw new Error(`scenario ${s.id}: motion events need a subType`);
+  if (s.homeowner.cards.filter((c) => c.default).length !== 1) throw new Error(`scenario ${s.id}: exactly one default card on file`);
   return s;
 }
 

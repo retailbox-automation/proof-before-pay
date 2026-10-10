@@ -4,6 +4,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { startSandbox, type RunningSandbox } from "./server.ts";
@@ -15,6 +16,7 @@ import { loadRegistryFixtures, APP_ROOT } from "../core/registry/fixtures.ts";
 import { lookupLicense } from "../core/registry/lookup.ts";
 import { reconcile } from "../core/reconcile.ts";
 import type { Booking, Capture, Invoice } from "./state.ts";
+import type { CheckoutSession } from "./checkout.ts";
 import type { Photo } from "../core/types.ts";
 
 const KEY = "sandbox-signing-key";
@@ -50,6 +52,12 @@ async function call<T = Record<string, unknown>>(path: string, body?: unknown, h
   const init: RequestInit = body === undefined ? { headers } : { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body) };
   const res = await fetch(sandbox.url + path, init);
   return { status: res.status, json: (await res.json()) as T };
+}
+
+async function req<T = Record<string, unknown>>(method: string, path: string, body: unknown, headers: Record<string, string> = {}): Promise<{ status: number; json: T; text: string }> {
+  const res = await fetch(sandbox.url + path, { method, headers: { "Content-Type": "application/json", ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const text = await res.text();
+  return { status: res.status, json: (text ? JSON.parse(text) : {}) as T, text };
 }
 
 async function bookP1(alexaBookingId: string, consent = true): Promise<Booking> {
@@ -89,7 +97,12 @@ test("full demo flow: book -> advance -> verified webhooks -> invoice + photos -
   assert.equal(b0.scope.items.reduce((s, i) => s + i.price, 0), 112000);
   assert.deepEqual([b0.scope.visitLoggingConsent.byPro, b0.scope.visitLoggingConsent.byHomeowner, b0.scope.visitLoggingConsent.granted], [true, false, false]);
   assert.equal(b0.doorCode.simulated, true);
-  assert.equal(b0.payment.cardOnFile.last2, "42");
+  assert.deepEqual([b0.payment.cardOnFile.brand, b0.payment.cardOnFile.last_digits], ["visa", "4242"]);
+  // SPI Purchase shapes on the estimate: charges, CANCELLATION policy, CARD instrument.
+  assert.equal(b0.purchaseDetails.charges.reduce((s, c) => s + c.amount, 0), 112000);
+  assert.deepEqual(b0.purchaseDetails.policies.map((x) => x.policyType), ["CANCELLATION"]);
+  assert.match(b0.purchaseDetails.policies[0].policyDescription, /cancellation/i);
+  assert.deepEqual(b0.purchaseDetails.paymentInstruments, [{ paymentInstrumentType: "CARD", paymentInstrumentId: "Visa **** 4242", wallet: "sandbox" }]);
   assert.equal((await call("/spi/invoice/PB-1001")).status, 404);
   assert.deepEqual((await call<{ photos: Photo[] }>("/spi/photos/PB-1001")).json.photos, []);
 
@@ -145,16 +158,59 @@ test("full demo flow: book -> advance -> verified webhooks -> invoice + photos -
   assert.deepEqual(plan.blockers, []);
   assert.equal(plan.notConfirmed.length, 2);
 
-  // Partial capture of the proven part; idempotent retry; cannot exceed the invoice.
-  const cap = await call<{ capture: Capture }>("/spi/capture", { partnerBookingId: "PB-1001", amount: plan.payNow, idempotencyKey: "pay-1" });
-  assert.equal(cap.status, 200);
-  assert.deepEqual([cap.json.capture.captureId, cap.json.capture.amount, cap.json.capture.remaining, cap.json.capture.paymentMethod.mode], ["CAP-1001", 105000, 37000, "sandbox"]);
-  const again = await call<{ capture: Capture }>("/spi/capture", { partnerBookingId: "PB-1001", amount: plan.payNow, idempotencyKey: "pay-1" });
-  assert.deepEqual(again.json.capture, cap.json.capture);
-  const over = await call<{ error: { code: string } }>("/spi/capture", { partnerBookingId: "PB-1001", amount: 40000 });
-  assert.equal(over.status, 409);
-  assert.equal(over.json.error.code, "exceeds_invoice");
-  assert.equal((await call("/spi/capture", { partnerBookingId: "PB-1001", amount: 10.5 })).status, 400);
+  // Checkout (UCP-shaped): prepare the proven items -> Create -> Update -> Complete, with idempotency,
+  // decline, amount guard and no double charge.
+  const U = { Authorization: "Bearer pbp-sandbox-test-user" };
+  const proven = plan.lines.filter((l) => l.verdict.kind === "proven").map((l) => (l.verdict as { scopeItemId: string }).scopeItemId);
+  const hash = createHash("sha256").update(JSON.stringify(plan)).digest("hex");
+  assert.equal((await req("POST", "/partner/checkout/prepare", { partnerBookingId: "PB-1001", scopeItemIds: proven, amount: 105000, planHash: hash })).status, 401);
+  const badAmount = await req<{ error: { code: string } }>("POST", "/partner/checkout/prepare", { partnerBookingId: "PB-1001", scopeItemIds: proven, amount: 112000, planHash: hash }, U);
+  assert.deepEqual([badAmount.status, badAmount.json.error.code], [409, "amount_mismatch"]);
+  const prep = await req<{ checkout: CheckoutSession }>("POST", "/partner/checkout/prepare", { partnerBookingId: "PB-1001", scopeItemIds: proven, amount: 105000, planHash: hash }, U);
+  const cs = prep.json.checkout;
+  assert.equal(prep.status, 200);
+  assert.deepEqual([cs.id, cs.status, cs.line_items.length], ["cs_1001", "incomplete", 5]);
+  assert.deepEqual(cs.totals, [{ type: "subtotal", amount: 105000 }, { type: "fee", amount: 0 }, { type: "total", amount: 105000 }]);
+  assert.equal(cs.links[0].title, "Refund policy · Bright Current Electric");
+  assert.deepEqual(cs.payment.instruments.map((i) => `${i.handler_id}:${i.display.brand}:${i.display.last_digits}`), ["partner_card_on_file:visa:4242", "partner_card_on_file:visa:0002"]);
+  const lines = cs.line_items.map((l) => ({ item: { id: l.item.id }, quantity: 1 }));
+  assert.equal((await req("POST", "/checkout-sessions", { line_items: lines }, U)).status, 400); // no Idempotency-Key
+  const withS5 = await req<{ error: { code: string } }>("POST", "/checkout-sessions", { line_items: [...lines, { item: { id: "PB-1001:S5" }, quantity: 1 }] }, { ...U, "Idempotency-Key": "k-tamper" });
+  assert.deepEqual([withS5.status, withS5.json.error.code], [409, "quote_mismatch"]);
+  const created = await req<CheckoutSession>("POST", "/checkout-sessions", { line_items: lines }, { ...U, "Idempotency-Key": "k-create", "Request-Id": "r-1" });
+  assert.deepEqual([created.status, created.json.id, created.json.status], [201, "cs_1001", "incomplete"]);
+  const replay = await req("POST", "/checkout-sessions", { line_items: lines }, { ...U, "Idempotency-Key": "k-create" });
+  assert.deepEqual([replay.status, replay.text], [201, created.text]);
+  const conflict = await req<{ code: string }>("POST", "/checkout-sessions", { line_items: lines.slice(1) }, { ...U, "Idempotency-Key": "k-create" });
+  assert.deepEqual([conflict.status, conflict.json.code], [409, "idempotency_conflict"]);
+  const ready = await req<CheckoutSession>("PUT", "/checkout-sessions/cs_1001", { line_items: lines, buyer: { first_name: "Sandbox", last_name: "Homeowner" } }, U);
+  assert.equal(ready.json.status, "ready_for_complete");
+  const pay = (pm: string) => ({ payment: { instruments: [{ id: "instr_1", handler_id: "partner_card_on_file", type: "card", credential: { type: "payment_method_reference", payment_method_id: pm } }] } });
+  const declined = await req<{ status: string; messages: { code: string }[] }>("POST", "/checkout-sessions/cs_1001/complete", pay("pm_visa_0002"), { ...U, "Idempotency-Key": "k-pay-0" });
+  assert.deepEqual([declined.status, declined.json.status, declined.json.messages[0].code], [200, "incomplete", "payment_failed"]);
+  assert.equal((await call<{ charges: Capture[] }>("/sim/charges")).json.charges.length, 0);
+  const done = await req<CheckoutSession>("POST", "/checkout-sessions/cs_1001/complete", pay("pm_visa_4242"), { ...U, "Idempotency-Key": "k-pay-1" });
+  assert.deepEqual([done.status, done.json.status, done.json.order?.id], [200, "completed", "ORD-1001"]);
+  const again = await req("POST", "/checkout-sessions/cs_1001/complete", pay("pm_visa_4242"), { ...U, "Idempotency-Key": "k-pay-1" });
+  assert.deepEqual([again.status, again.text], [200, done.text]);
+  assert.equal((await req("POST", "/checkout-sessions/cs_1001/complete", pay("pm_visa_4242"), { ...U, "Idempotency-Key": "k-pay-2" })).status, 409);
+  const charges = (await call<{ charges: Capture[] }>("/sim/charges")).json.charges;
+  assert.deepEqual(charges.map((c) => [c.amount, c.paymentMethod.last_digits]), [[105000, "4242"]]);
+  assert.equal((await req("GET", "/checkout-sessions/cs_1001", undefined, { Authorization: "Bearer pbp-sandbox-someone-else" })).status, 404);
+
+  // Warranty (partner-side extension): a month later, covered by the 90-day labor warranty; $0.00 return visit.
+  const offerEarly = await req<{ warranty: { covered: boolean } }>("POST", "/partner/warranty-claims", { partnerBookingId: "PB-1001", scopeItemIds: ["S2", "S6"] });
+  assert.equal(offerEarly.status, 401);
+  assert.equal((await call<{ nowLocal: string }>("/sim/advance", { to: "warranty" })).json.nowLocal, "2026-11-12 09:00:00");
+  const offer = await req<{ warranty: { covered: boolean; warrantyEnds: number; laborWarrantyDays: number; returnVisit: { start: number; end: number }; amount: number; booking: Booking | null } }>("POST", "/partner/warranty-claims", { partnerBookingId: "PB-1001", scopeItemIds: ["S2", "S6"] }, U);
+  assert.deepEqual([offer.json.warranty.covered, offer.json.warranty.laborWarrantyDays, offer.json.warranty.amount, offer.json.warranty.booking], [true, 90, 0, null]);
+  assert.equal(new Date(offer.json.warranty.warrantyEnds).toLocaleDateString("en-US", { timeZone: "America/New_York" }), "1/13/2027");
+  assert.deepEqual(offer.json.warranty.returnVisit, { start: Date.parse("2026-11-16T10:00:00-05:00"), end: Date.parse("2026-11-16T12:00:00-05:00") });
+  const booked = await req<{ warranty: { booking: Booking } }>("POST", "/partner/warranty-claims", { partnerBookingId: "PB-1001", scopeItemIds: ["S2", "S6"], confirm: true }, U);
+  const wb = booked.json.warranty.booking;
+  assert.deepEqual([wb.kind, wb.status, wb.warrantyFor, wb.costEstimate, wb.purchaseDetails.charges[0].amount], ["warranty_return", "CONFIRMED", "PB-1001", 0, 0]);
+  const twice = await req<{ warranty: { booking: Booking } }>("POST", "/partner/warranty-claims", { partnerBookingId: "PB-1001", scopeItemIds: ["S2", "S6"], confirm: true }, U);
+  assert.equal(twice.json.warranty.booking.partnerBookingId, wb.partnerBookingId); // one return visit, not two
 
   // Ring history API: bearer required; newest first; composite filter.
   assert.equal((await call("/ring/v1/history/devices/sandbox-front-door-01/events")).status, 401);

@@ -1,9 +1,14 @@
 // Sandbox services for Proof Before Pay (SPEC 3.4). Everything here is simulated; nothing touches a real
 // marketplace, camera, lock or card.
-//   /spi/*   marketplace in Home Services SPI shapes: ListProfessionals, CreateBooking (ESTIMATE|CONFIRMATION),
-//            GetBooking, CancelBooking, invoice/:partnerBookingId, photos/:partnerBookingId, capture (partial)
+//   /spi/*   marketplace in Home Services SPI shapes: ListProfessionals (Browse-and-Choose), CreateBooking
+//            (ESTIMATE|CONFIRMATION; experimental SPI documented for Auto-Match: our combination), GetBooking,
+//            CancelBooking; invoice/:partnerBookingId and photos/:partnerBookingId are partner-side extensions,
+//            not Alexa SPIs
+//   /checkout-sessions*, /.well-known/ucp   UCP-shaped checkout called by Alexa+ (here: our simulated checkout layer)
+//   /partner/checkout/prepare, /partner/warranty-claims   partner-side extensions used by the add-on
 //   /ring/*  Ring Partner API simulator: GET /ring/v1/history/devices/:id/events (Authorization: Bearer sandbox)
-//   /sim/*   GET clock, POST advance { to } (emits due camera webhooks, signed), POST reset { scenario }, GET webhooks
+//   /sim/*   GET clock, POST advance { to } (emits due camera webhooks, signed), POST reset { scenario }, GET webhooks,
+//            GET charges (sandbox-only inspection)
 //
 // Run: node src/sandbox/server.ts
 //   SANDBOX_PORT       default 8791
@@ -16,6 +21,7 @@ import { sign, SIGNATURE_HEADER } from "../core/doorbell/hmac.ts";
 import { timestampReadable, type RingWebhook } from "../core/doorbell/ring-format.ts";
 import { loadScenario } from "./scenario.ts";
 import { SandboxError, SandboxState } from "./state.ts";
+import { CheckoutStore, ucpProfile, type Reply } from "./checkout.ts";
 
 export const DEFAULT_SANDBOX_PORT = 8791;
 export const DEFAULT_WEBHOOK_URL = "http://127.0.0.1:8787/webhooks/doorbell";
@@ -66,12 +72,13 @@ const schemas = {
     homeownerConsentToVisitLogging: z.boolean().optional(),
   }),
   byId: z.object({ partnerBookingId: z.string().min(1) }),
-  capture: z.object({ partnerBookingId: z.string().min(1), amount: z.number(), idempotencyKey: z.string().min(1).max(100).optional() }),
+  prepare: z.object({ partnerBookingId: z.string().min(1), scopeItemIds: z.array(z.string().min(1)).min(1).max(20), amount: z.number().int(), planHash: z.string() }),
+  warranty: z.object({ partnerBookingId: z.string().min(1), scopeItemIds: z.array(z.string().min(1)).min(1).max(20), confirm: z.boolean().default(false) }),
   advance: z.object({ to: z.union([z.number().int(), z.string().min(1)]) }),
   reset: z.object({ scenario: z.string().optional() }),
 };
 
-async function readBody(req: IncomingMessage): Promise<unknown> {
+async function readRaw(req: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
@@ -79,9 +86,20 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
     if (size > 100_000) throw new SandboxError(413, "too_large", "body too large");
     chunks.push(chunk as Buffer);
   }
-  const raw = Buffer.concat(chunks).toString("utf8").trim();
+  return Buffer.concat(chunks).toString("utf8").trim();
+}
+function parseJson(raw: string): unknown {
   if (!raw) return {};
   try { return JSON.parse(raw); } catch { throw new SandboxError(400, "bad_json", "body is not valid JSON"); }
+}
+async function readBody(req: IncomingMessage): Promise<unknown> {
+  return parseJson(await readRaw(req));
+}
+/** Account-linked user from the bearer token (simulated account linking: "pbp-sandbox-<user>"). */
+function linkedUser(req: IncomingMessage): string {
+  const m = /^Bearer\s+pbp-sandbox-([A-Za-z0-9_.-]{1,64})$/i.exec(req.headers.authorization ?? "");
+  if (!m) throw new SandboxError(401, "unauthorized", "missing or invalid bearer token");
+  return m[1];
 }
 
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {
@@ -101,6 +119,7 @@ export async function startSandbox(opts: SandboxOptions = {}): Promise<RunningSa
   const webhookUrl = opts.webhookUrl ?? DEFAULT_WEBHOOK_URL;
   const cors = new Set(opts.corsOrigins ?? DEFAULT_CORS);
   let state = new SandboxState(loadScenario(opts.scenario ?? "demo"));
+  const checkout = new CheckoutStore(() => state);
   let deliveries: Delivery[] = [];
   // /sim/advance and /sim/reset run one at a time so webhooks never interleave.
   let simChain: Promise<unknown> = Promise.resolve();
@@ -140,6 +159,8 @@ export async function startSandbox(opts: SandboxOptions = {}): Promise<RunningSa
     nowLocal: timestampReadable(state.now, state.scenario.timeZone),
     demoAdvanceTo: state.scenario.clock.demoAdvanceTo,
     demoAdvanceToLocal: timestampReadable(state.scenario.clock.demoAdvanceTo, state.scenario.timeZone),
+    warrantyAdvanceTo: state.scenario.clock.warrantyAdvanceTo,
+    warrantyAdvanceToLocal: timestampReadable(state.scenario.clock.warrantyAdvanceTo, state.scenario.timeZone),
     bookings: state.bookings().map((b) => ({ partnerBookingId: b.partnerBookingId, proId: b.proId, status: b.status })),
   });
 
@@ -170,8 +191,43 @@ export async function startSandbox(opts: SandboxOptions = {}): Promise<RunningSa
     if (match && m === "GET") return send(res, 200, { invoice: state.invoice(match[1]) });
     match = /^\/spi\/photos\/([A-Za-z0-9-]+)$/.exec(p);
     if (match && m === "GET") return send(res, 200, { partnerBookingId: match[1], photos: state.photos(match[1]) });
-    if (p === "/spi/capture" && m === "POST") {
-      return send(res, 200, { capture: state.capture(parse(schemas.capture, await readBody(req))) });
+
+    // ---------- checkout (UCP-shaped; partner side) ----------
+    if (p === "/.well-known/ucp" && m === "GET") return send(res, 200, ucpProfile(`http://127.0.0.1:${req.socket.localPort ?? 0}`));
+    if (p === "/partner/checkout/prepare" && m === "POST") {
+      const user = linkedUser(req);
+      return send(res, 200, { checkout: checkout.prepare(user, parse(schemas.prepare, await readBody(req))) });
+    }
+    if (p === "/partner/warranty-claims" && m === "POST") {
+      linkedUser(req);
+      return send(res, 200, { warranty: state.warrantyClaim(parse(schemas.warranty, await readBody(req))) });
+    }
+    const ucp = (r: Reply) => {
+      res.setHeader("Cache-Control", "no-store");
+      const rid = req.headers["request-id"];
+      if (typeof rid === "string") res.setHeader("Request-Id", rid);
+      send(res, r.status, r.body);
+    };
+    const idem = typeof req.headers["idempotency-key"] === "string" ? (req.headers["idempotency-key"] as string) : undefined;
+    if (p === "/checkout-sessions" && m === "POST") {
+      const user = linkedUser(req);
+      const raw = await readRaw(req);
+      return ucp(checkout.idempotent(user, "create", idem, raw, true, () => checkout.create(user, parseJson(raw) as { line_items?: unknown; buyer?: unknown })));
+    }
+    match = /^\/checkout-sessions\/(cs_[A-Za-z0-9]+)(\/complete|\/cancel)?$/.exec(p);
+    if (match) {
+      const user = linkedUser(req);
+      const id = match[1];
+      if (!match[2] && m === "GET") return ucp(checkout.get(user, id));
+      if (!match[2] && m === "PUT") {
+        const raw = await readRaw(req);
+        return ucp(checkout.idempotent(user, `update ${id}`, idem, raw, false, () => checkout.update(user, id, parseJson(raw) as { line_items?: unknown; buyer?: unknown })));
+      }
+      if (match[2] === "/complete" && m === "POST") {
+        const raw = await readRaw(req);
+        return ucp(checkout.idempotent(user, `complete ${id}`, idem, raw, true, () => checkout.complete(user, id, parseJson(raw) as { payment?: { instruments?: unknown } })));
+      }
+      if (match[2] === "/cancel" && m === "POST") return ucp(checkout.cancel(user, id));
     }
 
     // ---------- Ring simulator ----------
@@ -185,11 +241,12 @@ export async function startSandbox(opts: SandboxOptions = {}): Promise<RunningSa
     // ---------- simulation control ----------
     if (p === "/sim/clock" && m === "GET") return send(res, 200, clockView());
     if (p === "/sim/webhooks" && m === "GET") return send(res, 200, { deliveries });
+    if (p === "/sim/charges" && m === "GET") return send(res, 200, { charges: state.charges() });
     if (p === "/sim/advance" && m === "POST") {
       const body = parse(schemas.advance, await readBody(req));
       const out = await exclusive(async () => {
-        const to = typeof body.to === "number" ? body.to : body.to === "demo" ? state.scenario.clock.demoAdvanceTo : Date.parse(body.to);
-        if (Number.isNaN(to)) throw new SandboxError(400, "bad_time", "to must be epoch milliseconds, an ISO time, or \"demo\"");
+        const to = typeof body.to === "number" ? body.to : body.to === "demo" ? state.scenario.clock.demoAdvanceTo : body.to === "warranty" ? state.scenario.clock.warrantyAdvanceTo : Date.parse(body.to);
+        if (Number.isNaN(to)) throw new SandboxError(400, "bad_time", "to must be epoch milliseconds, an ISO time, \"demo\" or \"warranty\"");
         const due = state.advance(to);
         const emitted: Delivery[] = [];
         for (const w of due) emitted.push(await deliver(w)); // in time order, one at a time
@@ -212,6 +269,7 @@ export async function startSandbox(opts: SandboxOptions = {}): Promise<RunningSa
         const name = body.scenario ?? "demo";
         try { state = new SandboxState(loadScenario(name)); } catch (err) { throw new SandboxError(400, "unknown_scenario", err instanceof Error ? err.message : String(err)); }
         deliveries = [];
+        checkout.reset();
       });
       log(`reset to scenario ${state.scenario.id}`);
       return send(res, 200, clockView());
@@ -224,8 +282,9 @@ export async function startSandbox(opts: SandboxOptions = {}): Promise<RunningSa
     if (origin && cors.has(origin)) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Vary", "Origin");
-      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, Idempotency-Key, Request-Id, UCP-Agent");
+      res.setHeader("Access-Control-Expose-Headers", "Request-Id");
     }
     if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
     try {
