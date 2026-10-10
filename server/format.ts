@@ -103,7 +103,7 @@ export function voiceBookReadBack(proName: string, start: number, end: number, i
 export const VOICE_BOOKED = "Booked. The confirmation is on your home card.";
 
 export function voiceCancelReadBack(job: Job): string {
-  const pol = job.policies.find((p) => p.kind === "cancellation")?.text ?? "No cancellation policy was given.";
+  const pol = job.policies.find((p) => p.kind === "cancellation")?.text ?? "Nothing has been charged.";
   return `Your booking with ${shortName(job.proName)} is ${spokenSlot(job.start, job.end)}, ${spokenAmount(job.total)} dollars. ${pol} Should I cancel it?`;
 }
 export const VOICE_CANCELLED = "Cancelled. Nothing was charged. The confirmation is on your home card.";

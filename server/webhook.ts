@@ -41,14 +41,14 @@ export async function handleDoorbellWebhook(req: IncomingMessage, res: ServerRes
     return;
   }
   let events;
-  try { events = services.parseWebhook(raw); } catch { json(res, 400, { error: "invalid JSON" }); return; }
+  try { events = services.parseWebhook(raw); } catch { json(res, 400, { error: "not a v1.1 motion_detected / button_press payload" }); return; }
   let stored = 0, dropped = 0;
   for (const ev of events) {
     let attached = false;
     for (const uid of listUserIds()) {
       const s = loadUser(uid);
       if (s.doorbell.deviceId !== ev.deviceId || (ev.accountId && s.doorbell.accountId !== ev.accountId)) continue;
-      const match = s.jobs.find((j) => j.status === "CONFIRMED" && j.scope.visitLoggingConsent.granted && ev.at >= j.start - 60 * 60_000 && ev.at <= j.end + 120 * 60_000);
+      const match = s.jobs.find((j) => j.status === "CONFIRMED" && j.scope.visitLoggingConsent.granted && ev.timestamp >= j.start - 60 * 60_000 && ev.timestamp <= j.end + 120 * 60_000);
       if (!match) continue;
       attached = updateUser(uid, (st) => {
         const j = st.jobs.find((x) => x.jobId === match.jobId)!;

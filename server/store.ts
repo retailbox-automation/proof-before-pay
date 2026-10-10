@@ -21,7 +21,7 @@ export type ProView = {
   license: LicenseCheck;
   eligible: boolean;
 };
-export type StoredEvent = CameraEvent & { receivedAt: number; signature: "verified" };
+export type StoredEvent = CameraEvent & { receivedAt: number; signature: "verified" | "history-api" };
 export type Payment = { captureId: string; amount: number; at: number; mode: "sandbox"; status: string };
 export type Job = {
   jobId: string;
@@ -41,7 +41,7 @@ export type Job = {
   paymentInstrument: { id: string; wallet: string };
   scope: ScopeOfWork;
   licenseAtBooking: LicenseCheck;
-  doorCode: { from: number; to: number; simulated: true };
+  doorCode: { from: number; to: number; simulated: true; note: string };
   cameraEvents: StoredEvent[];
   plan: PaymentPlan | null;
   planAt: number | null;
@@ -88,7 +88,8 @@ function fresh(userId: string): UserState {
     profile: { zipCode: process.env.DEMO_ZIP ?? "32000", timeZone: "America/New_York" },
     paymentMethod: { id: "•• 42", wallet: "sandbox" },
     voiceCode: { salt, hash: hashCode(process.env.DEMO_VOICE_CODE ?? DEMO_VOICE_CODE, salt) },
-    doorbell: { deviceId: process.env.DOORBELL_DEVICE_ID ?? "front-door-1", accountId: process.env.DOORBELL_ACCOUNT_ID ?? "acct-sandbox-1" },
+    // The household's linked front door camera (sandbox defaults = fixtures/demo/scenario.json).
+    doorbell: { deviceId: process.env.DOORBELL_DEVICE_ID ?? "sandbox-front-door-01", accountId: process.env.DOORBELL_ACCOUNT_ID ?? "ava1.ring.account.SANDBOX01" },
     lastSearch: null,
     pendingBooking: null,
     pendingCancel: null,

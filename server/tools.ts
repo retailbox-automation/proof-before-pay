@@ -176,27 +176,16 @@ export function buildMcpServer({ era, services }: BuildOptions): McpServer {
     }
     const pending = user.pendingBooking;
     if (confirm && pending && pending.quote.proId === pro_id) {
-      const q = await steps.run(MARKET, "CreateBooking CONFIRMATION", "sandbox", () => services.createBooking({ stage: "CONFIRMATION", proId: pro_id, alexaBookingId: pending.quote.alexaBookingId, partnerBookingId: pending.quote.partnerBookingId, projectDescription: pending.summary }), (r) => `${r.status} · ${r.partnerBookingId}`);
+      // The homeowner just said yes to a read-back that stated the visit-logging terms -> homeowner consent.
+      const q = await steps.run(MARKET, "CreateBooking CONFIRMATION", "sandbox", () => services.createBooking({ stage: "CONFIRMATION", alexaBookingId: pending.quote.alexaBookingId, partnerBookingId: pending.quote.partnerBookingId, homeownerConsentToVisitLogging: true }), (r) => `${r.status} · ${r.partnerBookingId} · visit log consent ${r.scope.visitLoggingConsent.granted ? "both sides" : "missing"}`);
       const job = updateUser(uid, (s) => {
         const id = `J${s.jobs.length + 1}`;
-        const scope: ScopeOfWork = {
-          jobId: id,
-          proId: pro_id,
-          items: q.lines.map((l, i) => ({ id: `S${i + 1}`, description: l.description, quantity: l.quantity, price: l.price, proof: ["photo"] })),
-          permit: "not_needed",
-          visitLoggingConsent: {
-            granted: q.proConsentsToVisitLog, // homeowner consented by confirming the read-back that stated it
-            byPro: q.proConsentsToVisitLog,
-            byHomeowner: true,
-            at: clk.now,
-            source: { service: "Booking read-back confirmed by voice; pro consent on the marketplace estimate", mode: "sandbox", ref: q.alexaBookingId },
-          },
-        };
+        const scope: ScopeOfWork = { ...q.scope, jobId: id };
         const j: Job = {
           jobId: id, title: pending.title, summary: pending.summary, proId: pro_id, proName: pending.proName,
           alexaBookingId: q.alexaBookingId, partnerBookingId: q.partnerBookingId, status: q.status, bookedAt: clk.now, cancelledAt: null,
           start: q.start, end: q.end, total: q.total, policies: q.policies, paymentInstrument: q.paymentInstrument, scope,
-          licenseAtBooking: pending.license, doorCode: { from: q.start - 30 * 60_000, to: q.end + 60 * 60_000, simulated: true },
+          licenseAtBooking: pending.license, doorCode: { from: q.doorCode.from, to: q.doorCode.to, simulated: true, note: q.doorCode.note },
           cameraEvents: [], plan: null, planAt: null, licenseAtReview: null, visitAtReview: null, paymentPrompt: null, payments: [], voiceCodeFailures: 0, drafts: [],
         };
         s.jobs.push(j);
@@ -210,12 +199,12 @@ export function buildMcpServer({ era, services }: BuildOptions): McpServer {
     // ESTIMATE + voice read-back (also when confirm=true arrives without a read-back: never book unread)
     const alexaBookingId = pending?.quote.proId === pro_id ? pending.quote.alexaBookingId : randomUUID();
     const summary = user.lastSearch!.summary;
-    const q = await steps.run(MARKET, "CreateBooking ESTIMATE", "sandbox", () => services.createBooking({ stage: "ESTIMATE", proId: pro_id, alexaBookingId, projectDescription: summary }), (r) => `${r.lines.length} items · ${F.usd(r.total)} · ${F.cardSlot(r.start, r.end)}`);
-    const title = F.jobTitle(summary, user.lastSearch!.trade);
+    const q = await steps.run(MARKET, "CreateBooking ESTIMATE", "sandbox", () => services.createBooking({ stage: "ESTIMATE", proId: pro_id, alexaBookingId }), (r) => `${r.scope.items.length} items · ${F.usd(r.total)} · ${F.cardSlot(r.start, r.end)} · pro ${r.proConsentsToVisitLog ? "agrees" : "does not agree"} to visit log`);
+    const title = q.title || F.jobTitle(summary, user.lastSearch!.trade);
     updateUser(uid, (s) => { s.pendingBooking = { quote: q, proName: pro.businessName, title, summary, license: pro.license, readBackAt: clk.now }; });
-    const speech = F.voiceBookReadBack(pro.businessName, q.start, q.end, q.lines.length, q.total, q.proConsentsToVisitLog);
-    const card = scopeCard({ title, proName: pro.businessName, start: q.start, end: q.end, total: q.total, items: q.lines.map((l, i) => ({ id: `S${i + 1}`, description: l.description, price: l.price, proof: ["photo"] })), proConsents: q.proConsentsToVisitLog, status: "pending" });
-    return reply("scope", speech, card, { readBack: true, needsConfirmation: true, proId: pro_id, total: q.total, items: q.lines.length, policies: q.policies, start: new Date(q.start).toISOString(), end: new Date(q.end).toISOString() }, steps);
+    const speech = F.voiceBookReadBack(pro.businessName, q.start, q.end, q.scope.items.length, q.total, q.proConsentsToVisitLog);
+    const card = scopeCard({ title, proName: pro.businessName, start: q.start, end: q.end, total: q.total, items: q.scope.items, proConsents: q.proConsentsToVisitLog, door: q.doorCode, status: "pending" });
+    return reply("scope", speech, card, { readBack: true, needsConfirmation: true, proId: pro_id, total: q.total, items: q.scope.items.length, policies: q.policies, start: new Date(q.start).toISOString(), end: new Date(q.end).toISOString() }, steps);
   });
 
   // ---------- cancel_booking ----------
@@ -241,7 +230,7 @@ export function buildMcpServer({ era, services }: BuildOptions): McpServer {
       card.action = { label: "Yes, cancel it", message: "Yes." };
       return reply("scope", F.voiceCancelReadBack(job), card, { jobId: job.jobId, readBack: true, needsConfirmation: true, policies: job.policies }, steps);
     }
-    const r = await steps.run(MARKET, "CancelBooking", "sandbox", () => services.cancelBooking(job.partnerBookingId, "Cancelled by the homeowner"), (x) => `${x.status} · ${job.partnerBookingId}`);
+    const r = await steps.run(MARKET, "CancelBooking", "sandbox", () => services.cancelBooking(job.partnerBookingId), (x) => `${x.status} · ${job.partnerBookingId}`);
     const updated = updateUser(uid, (s) => { const j = findJob(s, job.jobId); j.status = r.status; j.cancelledAt = clk.now; s.pendingCancel = null; return j; });
     return reply("scope", F.VOICE_CANCELLED, scopeCardFromJob(updated, "cancelled"), { jobId: job.jobId, status: updated.status }, steps);
   });
@@ -272,10 +261,10 @@ export function buildMcpServer({ era, services }: BuildOptions): McpServer {
     if (events.length) {
       steps.add({ service: CAMERA, op: "stored webhook events", mode: visit.source.mode, ms: 0, summary: `${events.length} events · signature ✓ · ${visit.arrivedAt !== null ? `arrive ${F.clock(visit.arrivedAt)} · leave ${F.clock(visit.leftAt!)}` : "no arrival in window"} · timestamps only` });
     } else if (consent) {
-      events = await steps.run(CAMERA, "history API (no webhooks stored)", "sandbox", () => services.cameraHistory(user.doorbell.deviceId, job.start - 60 * 60_000, job.end + 120 * 60_000), (r) => `${r.length} events · timestamps only`);
+      events = await steps.run(CAMERA, "history API (no webhooks stored)", (r) => services.visitWindow(r, { start: job.start, end: job.end }, consent).source.mode, () => services.cameraHistory(user.doorbell.deviceId), (r) => `${r.length} events · timestamps only`);
       visit = services.visitWindow(events, { start: job.start, end: job.end }, consent);
     } else {
-      steps.add({ service: CAMERA, op: "no consent", mode: "sandbox", ms: 0, summary: "visit logging not agreed · no events read" });
+      steps.add({ service: CAMERA, op: "no consent", mode: visit.source.mode, ms: 0, summary: "visit logging not agreed · no events read" });
     }
     const photos = await steps.run(MARKET, "job photos", "sandbox", () => services.getPhotos(job.partnerBookingId), (r) => `${r.length} photos · ${r.filter((p) => p.scopeItemId).length} tagged to items`);
     const license = await checkLicense(services, steps, job.licenseAtBooking.query, job.proName, clk.now, `license re-check ${job.licenseAtBooking.query}`);
@@ -283,7 +272,7 @@ export function buildMcpServer({ era, services }: BuildOptions): McpServer {
     const updated = updateUser(uid, (s) => {
       const j = findJob(s, job.jobId);
       j.plan = plan; j.planAt = clk.now; j.licenseAtReview = license; j.visitAtReview = visit; j.paymentPrompt = null;
-      if (!j.cameraEvents.length && events.length) j.cameraEvents = events.map((e) => ({ ...e, receivedAt: clk.now, signature: "verified" as const }));
+      if (!j.cameraEvents.length && events.length) j.cameraEvents = events.map((e) => ({ ...e, receivedAt: clk.now, signature: "history-api" as const }));
       return j;
     });
     return reply("payment", F.voiceReview(updated, plan), paymentCard(updated), { jobId: job.jobId, plan, visit: { arrivedAt: visit.arrivedAt, leftAt: visit.leftAt, source: visit.source }, photos: photos.length }, steps);

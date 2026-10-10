@@ -59,11 +59,11 @@ export function prosCard(trade: string, pros: ProView[]): CardModel {
   };
 }
 
-type ScopeLike = { title: string; proName: string; start: number; end: number; total: number; items: { id: string; description: string; price: number; proof: string[] }[]; proConsents: boolean; status: "pending" | "booked" | "cancelled"; ref?: string };
+type ScopeLike = { title: string; proName: string; start: number; end: number; total: number; items: { id: string; description: string; price: number; proof: string[] }[]; proConsents: boolean; door: { from: number; to: number }; status: "pending" | "booked" | "cancelled"; ref?: string };
 
 export function scopeCard(s: ScopeLike): CardModel {
   const itemRow = (i: ScopeLike["items"][number]): Row => ({ state: "info", kind: "item", label: i.description, detail: `${usd(i.price)} · proof: ${i.proof.join(" + ")}` });
-  const doorFrom = s.start - 30 * 60_000, doorTo = s.end + 60 * 60_000;
+  const doorFrom = s.door.from, doorTo = s.door.to;
   const statusText = s.status === "pending" ? "not booked yet" : s.status === "booked" ? `booked · ${s.ref}` : "cancelled · nothing charged";
   return {
     view: "scope",
@@ -82,7 +82,7 @@ export function scopeCard(s: ScopeLike): CardModel {
 }
 
 export function scopeCardFromJob(job: Job, status: "booked" | "cancelled"): CardModel {
-  return scopeCard({ title: job.title, proName: job.proName, start: job.start, end: job.end, total: job.total, items: job.scope.items, proConsents: job.scope.visitLoggingConsent.byPro, status, ref: job.partnerBookingId });
+  return scopeCard({ title: job.title, proName: job.proName, start: job.start, end: job.end, total: job.total, items: job.scope.items, proConsents: job.scope.visitLoggingConsent.byPro, door: job.doorCode, status, ref: job.partnerBookingId });
 }
 
 export function paymentCard(job: Job): CardModel {
