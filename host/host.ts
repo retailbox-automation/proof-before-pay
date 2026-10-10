@@ -190,11 +190,11 @@ async function renderCard(toolName: string, args: Record<string, unknown>, uri: 
     hostContext: {
       theme: "dark", platform: "web", displayMode: "inline", availableDisplayModes: ["inline"],
       deviceClass: "echo-show-8", locale: "en-US", timeZone: "America/New_York",
-      containerDimensions: { maxWidth: 860, maxHeight: 600 }, deviceCapabilities: { touch: true, hover: false },
+      containerDimensions: { maxWidth: 830, maxHeight: 590 }, deviceCapabilities: { touch: true, hover: false },
     },
   });
   bridge = b;
-  b.onsizechange = ({ height }) => { if (height) iframe.style.height = `${Math.min(height, 600)}px`; };
+  b.onsizechange = ({ height }) => { if (height) iframe.style.height = `${Math.min(height, 590)}px`; };
   b.onloggingmessage = (p) => console.log("[view log]", p);
   b.onmessage = async ({ content: blocks }) => {
     // A tap on a card CTA arrives as ui/message: treat it as the user's next turn.

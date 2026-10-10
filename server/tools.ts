@@ -54,6 +54,8 @@ class Steps {
 }
 
 function reply(view: ViewName, speech: string, card: CardModel, data: Record<string, unknown>, steps: Steps, isError = false) {
+  // Every result names where its answer came from; early answers come from the saved job state.
+  if (!steps.list.length) steps.add({ service: "Saved job state", op: "read", mode: "sandbox", ms: 0, summary: "answered from your saved jobs" });
   return {
     content: [{ type: "text" as const, text: speech }],
     structuredContent: { speech, seconds: F.seconds(speech), view, card, data },

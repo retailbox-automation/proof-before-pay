@@ -77,7 +77,7 @@ function render(card: Card): void {
     art.append(ul);
     if (card.more) {
       const more = el("button", { type: "button", class: "more", id: "more" }, card.more.label);
-      more.addEventListener("click", () => { for (const r of card.more!.rows) ul.append(rowEl(r)); more.remove(); });
+      more.addEventListener("click", () => { for (const r of card.more!.rows) ul.append(rowEl(r)); more.remove(); fit(); });
       art.append(more);
     }
   }
@@ -103,18 +103,39 @@ function render(card: Card): void {
     art.append(b);
   }
   root.replaceChildren(art);
+  fit();
   renders += 1;
   document.body.dataset.rendered = String(renders);
+}
+
+let deviceZoom = 1;
+let maxHeight = Infinity;
+
+/** One root scale: the device-class zoom, reduced only as far as needed to fit the host's container height.
+ *  body.scrollHeight is the unzoomed layout height at the current zoom (wrapping depends on zoom), so iterate. */
+function fit(): void {
+  const root = document.documentElement;
+  let zoom = deviceZoom;
+  for (let i = 0; i < 4; i++) {
+    root.style.setProperty("zoom", String(zoom));
+    if (!Number.isFinite(maxHeight)) break;
+    const onScreen = (document.body.scrollHeight + 14) * zoom; // + card margins
+    if (onScreen <= maxHeight) break;
+    zoom = Math.max(0.8, Math.floor(zoom * (maxHeight / onScreen) * 100) / 100);
+  }
+  document.body.dataset.zoom = String(zoom);
 }
 
 function applyHostContext(ctx: Record<string, unknown> | undefined): void {
   if (!ctx) return;
   if (ctx.theme === "dark" || ctx.theme === "light") document.documentElement.dataset.theme = ctx.theme;
   const dc = typeof ctx.deviceClass === "string" ? ctx.deviceClass : undefined;
-  const zoom = dc ? ZOOM[dc] ?? 1 : 1;
   if (!dc) console.warn("[view] hostContext has no deviceClass; using zoom 1");
-  document.documentElement.style.setProperty("zoom", String(zoom));
+  deviceZoom = dc ? ZOOM[dc] ?? 1 : 1;
+  const dims = ctx.containerDimensions as { maxHeight?: number } | undefined;
+  maxHeight = typeof dims?.maxHeight === "number" ? dims.maxHeight : Infinity;
   document.body.dataset.deviceClass = dc ?? "";
+  fit();
 }
 
 app.ontoolinput = () => {
