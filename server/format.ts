@@ -26,6 +26,8 @@ export const weekday = (t: number) => parts(t).weekday as string;
 export const weekdayShort = (t: number) => weekday(t).slice(0, 3);
 /** "10:02" / "1:00" (12-hour, no am/pm) */
 export const clock = (t: number) => { const p = parts(t); return `${p.hour}:${p.minute}`; };
+/** "Oct 9" */
+export const monthDay = (t: number) => new Intl.DateTimeFormat("en-US", { timeZone: TZ, month: "short", day: "numeric" }).format(new Date(t));
 /** "2:15 PM" */
 export const clockAmPm = (t: number) => { const p = parts(t); return `${p.hour}:${p.minute} ${p.dayPeriod}`; };
 /** Spoken hour: 10:00 -> "10", 12:00 -> "noon", 13:30 -> "1:30" */

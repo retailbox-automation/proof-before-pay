@@ -7,7 +7,7 @@
 // Alexa+ owns the PIN, the payment method and the confirmation (SPEC §7.1).
 import type { SourceMode } from "../src/core/types.ts";
 import type { Job, ProView, UserState } from "./store.ts";
-import { cap, cardSlot, clock, clockAmPm, dayDate, shortDate, shortName, spokenItem, usd, usdShort, weekdayShort } from "./format.ts";
+import { cap, cardSlot, clock, clockAmPm, dayDate, shortDate, shortName, spokenItem, usd, usdShort, weekdayShort, monthDay } from "./format.ts";
 
 export type ViewName = "pros" | "scope" | "payment" | "status" | "draft" | "warranty";
 export type RowState = "ok" | "bad" | "struck" | "info" | "pending";
@@ -82,7 +82,7 @@ export function prosCard(trade: string, pros: ProView[]): CardModel {
     layout: "list",
     title: `${trade === "electrician" ? "Electricians" : "Pros"} near you · license checked`,
     rows,
-    footer: `Source: ${REGISTRY}${asOf ? ` · checked ${clockAmPm(Date.parse(asOf))}` : ""}${pros.length > 5 ? ` · +${pros.length - 5} more` : ""}`,
+    footer: `Source: ${REGISTRY}${asOf ? ` · registry as of ${monthDay(Date.parse(asOf))}, ${clockAmPm(Date.parse(asOf))}` : ""}${pros.length > 5 ? ` · +${pros.length - 5} more` : ""}`,
   };
 }
 
