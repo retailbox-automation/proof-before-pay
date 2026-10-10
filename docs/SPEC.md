@@ -129,10 +129,10 @@ The Home Services SPI documents `ListProfessionals` for Browse-and-Choose and `C
 ### 7.4 Brands
 No Alexa, Echo, Amazon or Ring logos or look-alike marks anywhere (Amazon refused logo permission, forum 45450; video rule bars third-party marks). Words "Alexa+", "Echo Show" as plain text only. The simulator frame is a generic smart display labelled "Echo Show 8 simulator (1280×800 frame)".
 
-### 7.5 Voice budget (beats 1–4 must fit 60 s with the user's lines)
+### 7.5 Voice budget (beats 1–4 must fit 60 s with the user's lines; Alexa lines incl. the platform checkout lines ≤ 45 s at 2.5 words/s — 2026-10-10 rev.: 42.8 s)
 1. "Three electricians nearby. Quick Volt's license isn't in Florida's registry, so I left them out. Bright Current is licensed, 4.8 stars, 1,120 dollars. Want them?"
-2. "Bright Current, Thursday 10 to noon: six items, 1,120 dollars, paid only for items proven by a photo. They agreed your front door camera logs arrival and departure. Book it?" → "Booked. The confirmation is in your Alexa app."
-3. "Five of six items are proven by photos from the visit. The hallway smoke detector has no photo, and a 300-dollar inspection wasn't in the scope. You can pay 1,050 now; 370 waits for you."
+2. "Bright Current, Thursday 10 to noon, 1,120 dollars, paid per proven item. They agreed your door camera logs arrival and departure. Book it?" → "Booked. The confirmation is in your Alexa app."
+3. "Five of six items are proven. The hallway smoke detector has no photo, and a 300-dollar inspection wasn't in the scope. Pay 1,050 now; 370 waits for you."
 4. (Alexa+ checkout, simulated) as in 7.1.
 5. (new session) "Two things: the hallway smoke detector needs a photo, and the 300-dollar inspection line is your call. Want a draft note to Bright Current?"
 6. (warranty, a month later, new session) "That's covered: Bright Current's 90-day labor warranty runs to January 13. I can book a free return visit with the original scope and photos attached." — tool `warranty_callback` (sandbox booking at $0.00, evidence attached). Added under the owner's "do everything" instruction of 2026-10-10; both independent reviews recommended it (internal review notes, not published). Recurring services stay out of the demo (one README line only).

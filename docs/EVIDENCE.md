@@ -1,0 +1,26 @@
+# Evidence — every claim in the README, video and Devpost text, and how to check it
+
+Rule: a claim goes into the submission only if it has a row here with a command or file a stranger can open, and it was checked by someone other than its author (another agent or a fresh run). Dates are UTC.
+
+| # | Claim (as worded in the submission) | How a stranger checks it | Result | Checked (date, by) |
+|---|---|---|---|---|
+| E1 | MCP 2025-11-25 over Streamable HTTP, strict | `npm run verify` → rows P1, N4a–N4c | PASS | 2026-10-10, verify run (lane APP), re-run at merge |
+| E2 | 2026-07-28 served from the same endpoint without hand-written protocol code | `npm run verify` → row S4; `server/server.ts` era routing (`isLegacyRequest` + `createMcpHandler`) | PASS | 2026-10-10, lane APP |
+| E3 | State survives a new MCP session and a server restart | verify rows S2, S5 | PASS | 2026-10-10, lane APP |
+| E4 | Unknown session 404, foreign Origin 403, missing account link 401 | verify N1–N10 | PASS | 2026-10-10, lane APP |
+| E5 | Camera webhooks are verified with HMAC-SHA256 on the raw body; bad signature → 401, nothing stored | verify W1–W2; `src/core/doorbell/hmac.ts` tests (tampered body, re-serialized JSON) | PASS | 2026-10-10, lanes CORE + APP |
+| E6 | Invoice check is fixed rules, not a model; same input → same output | `src/core/reconcile.ts` + tests (determinism test runs twice, deep-equal); no LLM dependency in `package.json` | PASS | 2026-10-10, lane CORE (mutation check: 5 guards broken → tests red) |
+| E7 | Demo numbers: pay $1,050.00, waits $370.00, two "not confirmed" rows | verify T9/B-rows; `fixtures/demo/scenario.json` | PASS | 2026-10-10, lane APP |
+| E8 | The license check hits Florida's live registry | `LIVE=1 node --test src/core/registry/lookup.live.test.ts` → `verdict=not_found found=false records=0 mode=live` for EC99000103 | PASS (live, 518 ms) | 2026-10-10 04:01Z, lane CORE; spike 03:31Z, build lane |
+| E9 | Fictional license numbers EC99000101/102/103 are not real Florida licenses | live lookup of each → 0 records | 0 records ×3 | 2026-10-10 03:4xZ, build lane |
+| E10 | Registry fixture pages contain no real person or business | `grep -c -i -E "<names on the original results page>" fixtures/registry/*.html` → 0; names are fictional | 0 hits | 2026-10-10, build lane |
+| E11 | "Since we closed on our house in July, I've contacted 119 contractors and home-service companies and booked 13 jobs. Five went wrong." | `node scripts/backtest.ts --check` against `data/backtest/engagements.anon.json` → BACKTEST.md "Since the house closed" row | 119 / 13 / 5 | 2026-10-10: ledger by 5 readers + composer + 2 adversarial checkers + judge over 312 primary files (0 read errors); counts recomputed by code |
+| E12 | Of the 5 jobs that went wrong, each would have been flagged by at least one gate | BACKTEST.md summary (5 of 5 caught by ≥1 gate; 3 of 5 with every problem caught) | 5/5 (≥1 gate) | 2026-10-10, backtest re-run by verify |
+| E13 | The anonymized ledger has no names, phones, addresses or license numbers | schema guard in `scripts/backtest.ts` (rejects PII-looking strings); anonymizer check: 200 vendor-name tokens found in the private source, 0 in the output | 0 leaks | 2026-10-10, build lane (must-light control on the private file) |
+| E14 | "Florida received 4,847 unlicensed-activity complaints in one year." | DBPR ULA Report FY 2024-25, PDF p.13 | verbatim | 2026-10-10, research critic (re-opened PDF) |
+| E15 | "Florida paid $4.35 million in 2025 to homeowners harmed by licensed contractors." | DBPR "2025 Accomplishments" page (posted 2026-01-07): $4,352,242 | verbatim | 2026-10-10, research critic |
+| E16 | "Americans filed 81,925 home-repair reports with the FTC in 2024." | FTC Consumer Sentinel Data Book 2024, printed p.7 | verbatim (saved copy; live URL 404 to curl on 10-10) | 2026-10-10, research critic |
+| E17 | Checkout belongs to Alexa+; the add-on never takes the voice code or payment data | Alexa+ docs `implement-checkout-endpoints` (:213, :236-237); verify rows for §7.1 (added in round 2) | pending round 2 | — |
+| E18 | Ring Partner API has no lock control → door code simulated | 0 mentions of lock/unlock on 5 Ring developer pages (control: motion_detected 14, snapshot 25) | verified | 2026-10-10 03:24Z, research lane |
+| E19 | Classic Alexa skill calls the same MCP server | `npm run skill:test` (23 tests against a live proofpay server) | PASS (not yet on a device) | 2026-10-10, lane SKILL |
+| E20 | Runs offline in two commands | `npm ci --prefix apps/proof-before-pay && npm run demo --prefix apps/proof-before-pay` on a clean checkout | pending clean-clone check before submission | — |
