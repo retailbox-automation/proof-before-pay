@@ -46,6 +46,16 @@ FRICTION-LOG.md and in `npm run verify` (logs in `apps/proof-before-pay/logs/ver
   states its own fact instead ("nothing is charged before the work is proven").
 - **Would build again:** yes.
 
+## Alexa+ checkout (UCP-shaped partner endpoints; docs snapshot 2026-10-03, re-checked 2026-10-10)
+- **What for:** the payment step. The add-on's `prepare_checkout` stages the proven items; our host plays Alexa+ and calls
+  `POST /checkout-sessions` → `PUT` → `POST …/complete` on the sandbox partner backend.
+- **What worked:** the contract is precise enough to test: `Idempotency-Key` replay and 409 (verify K4, K7), decline as
+  HTTP 200 `incomplete` + `payment_failed` (K6), stored-card handler with brand + last_digits (K5), refund-policy link
+  title shown before paying (B8). "Payment belongs to Alexa+" made the add-on simpler: no PIN, no card, no payment UI.
+- **What didn't:** no partial capture or invoice concept, so "pay the proven part" is modelled as one session with only
+  the proven items; whether a second session per booking is allowed for the waiting part is an open question.
+- **Would build again:** yes.
+
 ## Front door camera Partner API (webhook v1.1 format, simulated)
 - **What for:** arrive/leave timestamps for a consented booking window, delivered as signed webhooks; history API as
   a fallback.

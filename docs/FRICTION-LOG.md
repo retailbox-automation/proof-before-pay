@@ -109,3 +109,15 @@ Environment for every entry unless noted: macOS, Node v26.10.0, `@modelcontextpr
   api-documentation, develop, FAQ and release-notes pages; motion and snapshot topics are present).
 - **Severity:** low for v1. **Workaround:** the door code is shown and labelled "simulated (no lock API)" on the scope
   card and in the chip. **Suggestion:** a lock capability, or a documented hand-off to lock partners.
+
+## 8. `registerAppTool` fails at request time for a tool without a UI resource
+
+- **Task:** register `prepare_checkout`, a tool that deliberately has no card (the checkout screen belongs to Alexa+).
+- **Command:** first `tools/call` after registering it with `registerAppTool(server, "prepare_checkout", { … })` and no
+  `_meta.ui`.
+- **Result:** `TypeError: Cannot read properties of undefined (reading 'ui')` inside `ext-apps/dist/src/server/index.js`,
+  surfaced to the client as `-32603 Internal error` on `initialize` (the server is built per session).
+- **Expected vs actual:** expected a plain tool, or an error at registration time; actual: a crash on the first request.
+- **Severity:** low. **Workaround:** `server.registerTool` for tools without a card. **Suggestion:** validate at
+  registration, or fall back to a plain tool.
+- **Tool + version:** `@modelcontextprotocol/ext-apps` 2.0.0.
