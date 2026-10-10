@@ -28,6 +28,8 @@ export const TEXT = {
 };
 
 const DEFAULT_JOB = "replace outlets and smoke detectors in the master bath";
+/** The interaction model's warranty samples are about the bathroom outlet (no slot). */
+const WARRANTY_ISSUE = "The bathroom outlet stopped working again";
 const APL = "Alexa.Presentation.APL";
 
 type Pending =
@@ -170,7 +172,8 @@ export function buildSkill(deps: SkillDeps) {
   }
 
   async function warranty(h: HandlerInput, confirm: boolean): Promise<Response> {
-    const { out, response } = await runTool(h, "warranty_callback", confirm ? { confirm: true } : {});
+    // First call names the problem (the server matches it to scope items and their photos); confirm accepts that offer.
+    const { out, response } = await runTool(h, "warranty_callback", confirm ? { confirm: true } : { issue: WARRANTY_ISSUE });
     const offer = !confirm && out.kind === "ok" && !out.isError && (out.structured?.data?.needsConfirmation ?? !!out.structured?.card?.action);
     setAttrs(h, { pending: offer ? { kind: "warranty" } : null });
     return response;

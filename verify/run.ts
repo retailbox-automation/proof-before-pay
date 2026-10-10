@@ -95,6 +95,15 @@ try {
   rows.push(r);
   log(`${r.pass ? "PASS" : "FAIL"} C1 ${r.check} :: ${r.actual}`);
 
+  // Alexa custom skill (lane SKILL): its tests run the skill as an MCP client of a fresh proofpay stack on ephemeral ports.
+  const sk = spawnSync(process.execPath, ["--test", "skill/test/*.test.ts"], { cwd: ROOT, encoding: "utf8" });
+  const skTxt = sk.stdout + sk.stderr;
+  writeFileSync(join(LOGS, "skill-tests.log"), skTxt);
+  const skNum = (k: string) => Number(skTxt.match(new RegExp(`ℹ ${k} (\\d+)`))?.[1] ?? NaN);
+  const c3 = { id: "C3", check: "Alexa skill tests (npm run skill:test: MCP client of proofpay, APL cards, request signature)", expected: "exit 0, fail 0", actual: `exit ${sk.status} · tests ${skNum("tests")} · pass ${skNum("pass")} · fail ${skNum("fail")}`, pass: sk.status === 0 && skNum("fail") === 0 && skNum("pass") > 0 };
+  rows.push(c3);
+  log(`${c3.pass ? "PASS" : "FAIL"} C3 ${c3.check} :: ${c3.actual}`);
+
   // Backtest (lane CORE): exit 0 = published numbers reproduce, 1 = they differ, 2 = ledger not supplied.
   const published = existsSync(join(ROOT, "..", "..", "docs", "proof-before-pay", "BACKTEST.md"));
   if (existsSync(join(ROOT, "scripts", "backtest.ts"))) {

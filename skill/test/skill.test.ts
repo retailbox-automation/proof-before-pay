@@ -264,7 +264,7 @@ test("Lambda bundle (esbuild, cjs, target node16) answers through the same live 
     process.env.PBP_TOKEN = `pbp-sandbox-bundle-${Date.now().toString(36)}`;
     const { handler } = createRequire(import.meta.url)(file);
     const r = await handler(envelope({ sessionId: "bundle", intent: "FindProsIntent" }));
-    assert.match(speech(r), /^I found three electricians nearby\./);
+    assert.match(speech(r), /^Three electricians nearby\./);
     assert.equal(apl(r).token, "pbp-pros");
     assert.equal(apl(r).document.version, "2024.3");
     const end = await handler(envelope({ sessionId: "bundle", intent: "AMAZON.StopIntent" }));

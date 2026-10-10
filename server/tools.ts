@@ -100,15 +100,20 @@ function findJob(s: UserState, jobId: string): Job {
 }
 
 const STOP = new Set(["the", "a", "an", "again", "is", "it", "my", "our", "in", "of", "and", "not", "no", "stopped", "working", "work", "broken", "keeps", "still", "doesn't", "won't", "was", "has", "with", "for", "to", "on"]);
-const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9' ]/g, " ").split(/\s+/).filter((w) => w.length > 1 && !STOP.has(w));
-/** Deterministic: scope items sharing words with the issue, best overlap first. */
+const SYN: Record<string, string> = { bathroom: "bath", restroom: "bath", washroom: "bath", receptacle: "outlet", plug: "outlet", socket: "outlet", detector: "detector", alarm: "detector" };
+const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9' ]/g, " ").split(/\s+/)
+  .filter((w) => w.length > 1 && !STOP.has(w) && !/^\d+$/.test(w))
+  .map((w) => (w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w))
+  .map((w) => SYN[w] ?? w);
+/** Deterministic: scope items sharing words with the issue. Items with 2+ shared words; else the best single matches. */
 function matchItems(job: Job, issue: string): string[] {
   const iw = new Set(words(issue));
-  return job.scope.items
-    .map((i) => ({ id: i.id, n: words(i.description).filter((w) => iw.has(w)).length }))
+  const scored = job.scope.items
+    .map((i) => ({ id: i.id, n: new Set(words(i.description).filter((w) => iw.has(w))).size }))
     .filter((x) => x.n > 0)
-    .sort((a, b) => b.n - a.n || a.id.localeCompare(b.id))
-    .map((x) => x.id);
+    .sort((a, b) => b.n - a.n || a.id.localeCompare(b.id));
+  const strong = scored.filter((x) => x.n >= 2);
+  return (strong.length ? strong : scored.filter((x) => x.n === scored[0]?.n)).map((x) => x.id);
 }
 
 /** Read the prepared checkout session (UCP Get). If Alexa+ completed it, record the payment. */
@@ -350,8 +355,10 @@ export function buildMcpServer({ era, services }: BuildOptions): McpServer {
     const content = {
       content: [{ type: "text" as const, text: speech }],
       structuredContent: {
-        speech, seconds: F.seconds(speech),
+        // Same shape as the other tools; the pre-checkout card is offered to clients without MCP Apps (no ui link here).
+        speech, seconds: F.seconds(speech), view: "payment", card: paymentCard(job),
         data: {
+          total: cs.totals.total,
           checkoutSessionId: cs.id, // for Alexa+ to call the partner's checkout endpoints; never shown to the customer
           seller: cs.seller, merchantOfRecord: cs.merchantOfRecord,
           lineItems: cs.lineItems, totals: cs.totals, currency: "USD",
@@ -406,18 +413,20 @@ export function buildMcpServer({ era, services }: BuildOptions): McpServer {
     title: "Warranty return visit",
     description: "Check whether a problem after a finished job is covered by the pro's labor warranty and, after the homeowner confirms, book a free return visit with the original scope, photos and visit log attached. confirm=false checks and offers; confirm=true books.",
     inputSchema: z.object({
-      issue: z.string().trim().min(3).max(200).describe("What is wrong, in the homeowner's words"),
+      issue: z.string().trim().min(3).max(200).optional().describe("What is wrong, in the homeowner's words; may be omitted with confirm=true to accept the offer just read back"),
       confirm: z.boolean().default(false).describe("true only after the homeowner accepted the offered return visit"),
       job_id: jobId,
     }),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     _meta: { ui: { resourceUri: viewUri("warranty") } },
-  }, async ({ issue, confirm, job_id }, ctx) => {
+  }, async ({ issue: said, confirm, job_id }, ctx) => {
     const uid = userIdOf(ctx);
     const steps = new Steps();
     const clk = await services.now();
     const job = currentJob(loadUser(uid), job_id);
     if (!job || job.status === "CANCELLED") return plainError("warranty", "I don't see a finished job to check a warranty for.", steps);
+    const issue = said ?? (confirm && job.warranty && !job.warranty.booked ? job.warranty.issue : undefined);
+    if (!issue) return plainError("warranty", "Tell me what stopped working, and I'll check the warranty.", steps);
     const ids = steps.sync("Saved job state", "match the issue to the agreed scope", "sandbox", () => matchItems(job, issue), (r) => (r.length ? `items ${r.join(", ")}` : "no scope item matches"));
     if (!ids.length) return plainError("warranty", "I couldn't match that to the work in this job. Tell me which item stopped working.", steps);
     const offered = job.warranty && job.warranty.issue === issue && !job.warranty.booked;
