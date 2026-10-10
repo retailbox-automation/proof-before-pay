@@ -1,0 +1,965 @@
+
+<head><title>Licensing Portal - License Search</title>
+<style type="text/css">BODY { font-family: "arial", helvetica, sans-serif; } BUTTON { outline-width : thick } INPUT.hours {font-family: "arial", helvetica, sans-serif; font-weight: normal; outline-width : thick; outline-color: red; }</style>
+
+
+<script language="JavaScript">
+
+
+function MessageBuild(m,t) 
+{
+ 	if (t!="") 
+	{
+    		if (m=="") 
+       			m = t;
+    		else
+       			m = m + "\n" + t;
+ 	};
+ 	return m;
+}
+
+function LeftTrim(String,TrimChar)
+{
+ 	String += "";         // Force argument to string.
+ 	TrimChar += ""       // Force argument to string.
+ 	if((TrimChar == "") || (!(TrimChar.length == 1)))
+  		TrimChar = " "
+ 	if(String.length == 0)
+  		return(String)
+ 	var Count = 0
+ 	for(Count = 0;Count < String.length;Count++)
+ 	{
+  		if(!(String.charAt(Count) == TrimChar))
+   			return(String.substring(Count,String.length))
+ 	}
+ 	return("")
+}
+
+
+function RightTrim(String,TrimChar)
+{
+ 	String += ""        // Force argument to string.
+ 	TrimChar += ""      // Force argument to string.
+ 	if((TrimChar == "") || (!(TrimChar.length == 1)))
+  	TrimChar = " "
+ 	if(String.length == 0)
+  		return(String)
+ 	var Count = 0
+ 	for(Count = String.length -1;Count >= 0;Count--)
+ 	{
+  		if(!(String.charAt(Count) == TrimChar))
+   			return(String.substring(0,Count + 1))
+ 	}
+ 	return("")
+}
+
+
+function AllTrim(String,TrimChar)
+{
+ 	String += ""        // Force argument to string.
+ 	TrimChar += ""      // Force argument to string.
+ 	if((TrimChar == "") || (!(TrimChar.length == 1)))
+  		TrimChar = " "
+ 	return(RightTrim(LeftTrim(String,TrimChar),TrimChar))
+}
+
+function changeAddrDropDown() //Change the Address Type Drop Down Based on User Entry
+{
+	var formName = document.forms["reportForm"];
+	var sBoardType = formName.hBoardType.value;
+	if (sBoardType != "H")
+	{
+		if (formName.LastName.value.length > 0) //Validate Last Name
+		{
+			formName.AddrType.options[0].selected = true;
+		}
+		else
+		{
+			if (formName.OrgName.value.length > 0) //Validate Organization Name
+			{
+				formName.AddrType.options[1].selected = true;
+			}
+			else
+			{
+				formName.AddrType.options[1].selected = true;
+			}
+		}
+	}
+}
+
+function validate() //Client side validation for search parameters
+{
+	var formName = document.forms["reportForm"];
+	//Contains Search Types: Name, LicNbr, City, LicType
+	var SearchType = formName.hSearchType.value;
+	var sBoardType = formName.hBoardType.value;
+	var ErrorMsg = ""
+
+	//Validate Name Search
+	if (SearchType == "Name")
+	{
+	//	if (sBoardType == "H") //Organization Search H&R
+	//	{
+	//		if (formName.OrgName.value.length <= 0) //Validate Organization Name
+	//		{
+	//			ErrorMsg = ErrorMsg + "; Establishment Name";
+	//			alert("The Following Field(s) Are Required: " + ErrorMsg);
+	//			return(false);
+	//		}
+	//		else
+	//		{
+	//			return(true);
+	//		}
+	//	}
+	//	if (sBoardType != "H")
+	//	{
+			if (formName.LastName.value.length <= 0 && formName.FirstName.value.length <= 0) //Validate No First and Last Name
+			{
+				if (formName.OrgName.value.length <= 0) //Validate Organization Name
+				{
+					if (ErrorMsg.length > 0)
+						ErrorMsg = ErrorMsg + "; First Name, Last Name, OR Organization Name";
+					else
+						ErrorMsg = "First Name, Last Name, OR Organization Name";
+				}
+			}
+			//else
+			//{
+			//	if (formName.FirstName.value.length <= 0) //Validate First Name
+			//	{
+			//		if (ErrorMsg.length > 0)
+			//			ErrorMsg = ErrorMsg + "; First Name";
+			//		else
+			//			ErrorMsg = "First Name";
+			//	}
+			//}
+	//	}
+		if (ErrorMsg.length > 0) //If there were any required fields missing display error message
+		{
+			alert("The Following Field(s) Are Required: " + ErrorMsg);
+			return(false);
+		}
+		else
+			return(true);
+
+	}
+
+	//Validate LicNbr Search
+	if (SearchType == "LicNbr")
+	{
+		if (formName.LicNbr.value.length <= 0) //Validate License Number
+		{
+			if (ErrorMsg.length > 0)
+				ErrorMsg = ErrorMsg + "; License Number";
+			else
+				ErrorMsg = "License Number";
+		}
+		if (ErrorMsg.length > 0) //If there were any required fields missing display error message
+		{
+			alert("The Following Field(s) Are Required: " + ErrorMsg);
+			return(false);
+		}
+		else
+			return(true);
+	}
+	
+
+	//Validate Location 
+	if (SearchType == "City" || SearchType == "LicTyp")
+	{
+		//if (formName.Division.value.length <= 0) //Validate Division
+		//{
+		//	if (ErrorMsg.length > 0)
+		//		ErrorMsg = ErrorMsg + "; Division";
+		//	else
+		//		ErrorMsg = "Division";
+		//}
+		if (formName.Board.value.length <= 1) //Validate Board
+		{
+			if (ErrorMsg.length > 0)
+				ErrorMsg = ErrorMsg + "; License Category";
+			else
+				ErrorMsg = "License Category";
+		}
+		if (formName.LicenseType.value.length <= 1) //Validate License Type
+		{
+			if (ErrorMsg.length > 0)
+				ErrorMsg = ErrorMsg + "; License Type";
+			else
+				ErrorMsg = "License Type";
+		}
+		//if (formName.AddrType.value.length <= 0) //Validate Address Type
+		//{
+		//	if (ErrorMsg.length > 0)
+		//		ErrorMsg = ErrorMsg + "; Address Type";
+		//	else
+		//		ErrorMsg = "Address Type";
+		//}
+		if (formName.County.value.length <= 0 && formName.City.value.length <= 0 && formName.State.value != "NA") //Validate County and City
+		{
+			if (ErrorMsg.length > 0)
+				ErrorMsg = ErrorMsg + "; City or County";
+			else
+				ErrorMsg = "City or County";
+		}
+		if (formName.State.value.length <= 0) //Validate State
+		{
+			if (ErrorMsg.length > 0)
+				ErrorMsg = ErrorMsg + "; State";
+			else
+				ErrorMsg = "State";
+		}
+		if (ErrorMsg.length > 0) //If there were any required fields missing display error message
+		{
+			alert("The Following Field(s) Are Required: " + ErrorMsg);
+			return(false);
+		}
+		else
+			return(true);
+	}
+
+  return true; //Complete Validation
+}
+
+function ValidateSearch() //Set the hidden field based on radio button selected on first page
+{
+	var formName = document.forms["reportForm"];
+	//Contains Search Types: Name, LicNbr, City, LicType
+	var sSearchType;
+	var sSID = formName.hSID.value;
+	var sBoardType = formName.hBoardType.value;
+	sSearchType = "Name";
+	if (formName.SearchType[0].checked) //Check to see if Name Search was selected
+	{
+		sSearchType = "Name";
+	}
+	if (formName.SearchType[1].checked) //Check to see if License Number Search was selected
+	{
+		sSearchType = "LicNbr";
+	}
+	if (sBoardType != "H") //Check to see if Hotels and Restaurants Search (Don't check City or Lic Type)
+	{
+		if (formName.SearchType[2].checked) //Check to see if City Search was selected
+		{
+			sSearchType = "City";
+		}
+		if (formName.SearchType[3].checked) //Check to see if License Type Search was selected
+		{
+			sSearchType = "LicTyp";
+		}
+	}
+	//Go to the same page in the next mode with search type and board populated
+	document.location.href = "wl11.asp?mode=1&search=" + sSearchType + "&SID=" + sSID + "&brd=" + sBoardType;
+}
+
+function DDChange() //Cause form to post and set flag to not advance to next page
+{
+	var formName = document.forms["reportForm"]; //Get form 
+	formName.hDDChange.value = "Y"; //Set drop down list flag 
+	formName.submit(); //Submit the form
+}
+
+function ChangePage(sAction) //Set flag for change page action for server side processing
+{
+	var formName = document.forms["reportForm"];
+
+	if(sAction==1) //Go to Page
+	{
+		formName.hPageAction.value = "1";
+	}
+	if(sAction==2) //First Page
+	{
+		formName.hPageAction.value = "2";
+	}
+	if(sAction==3) //Previous Page
+	{
+		formName.hPageAction.value = "3";
+	}
+	if(sAction==4) //Next Page
+	{
+		formName.hPageAction.value = "4";
+	}
+	if(sAction==5) //Last Page
+	{
+		formName.hPageAction.value = "5";
+	}
+	if(sAction==6) //Last Page
+	{
+		formName.hPageAction.value = "NS";
+	}
+	return(true);
+}
+
+
+</script>
+
+
+<!--***START MAIN BODY INSERT***-->	
+<!--***START TOP INCLULDE FILE***-->
+
+
+
+<!-- <script language="JavaScript">function LaunchHelp() { // in a new window  window.open("http://bprtlcn04/help.htm",'','alwaysRaised=1,dependent=1,directories=0,height=400,hotkeys=0,location=0,menubar=0,resizable=1,screenX=200,screenY=200,scrollbars=0,status=1,toolbar=0,width=500');}</script> -->
+<style type="text/css">
+	<!--
+	@media all
+	{
+	#main	{border:none;}
+	A.main:link {color:"#0000FF"; text-decoration: none; font-size:12px; font-weight:normal;}
+	A.main:visited {color:"#ffffff"; text-decoration: none; font-size:12px; font-weight:normal;}
+	A.main:hover {color:"red"; text-decoration: none; font-size:12px; font-weight:normal;}
+	
+	A.log:link {color:"#ffffff"; text-decoration: none; font-size:12px}
+	A.log:visited {color:"#ffffff"; text-decoration: none; font-size:12px}
+	A.log:hover {color:"red"; text-decoration: none; font-size:12px}
+	
+	A.footer:link {color:"blue"; text-decoration: none; font-size:11px}
+	A.footer:visited {color:"blue"; text-decoration: none; font-size:11px}
+	A.footer:hover {color:"blue"; text-decoration: underline; font-size:11px}
+
+	td.main { line-height : 100% }
+	td.main a:active { color : #052A73; text-decoration: none;  font-size:12px}
+	td.main a:link { color : #052A73; text-decoration: none;  font-size:12px}
+	td.main a:visited { color : #A9A9A9; text-decoration: none;  font-size:12px}
+	td.main a:hover { color : #016ddc; text-decoration: none;  font-size:12px}
+	}
+	
+li {
+font-size:12px;
+padding:3px;
+list-style: none;
+}
+
+li:top {
+font-size:12px;
+/*padding:3px;*/
+list-style: none;
+}
+
+li a:top {
+display: block;
+  padding: 8px!important;
+  margin: 5px!important;
+color:red;
+}	
+
+li.list {
+font-size:12px;
+padding:3px;
+list-style: none;
+}
+
+li.listtop {
+font-size:12px;
+padding:0;
+list-style: none;
+margin-left:40px;
+}
+
+th.list	{
+	color:#016ddc;
+	font-family: "Arial",Helvetica, sans-serif;
+	font-size:12px;
+	text-align: left;
+	padding:5px;
+	background-color: #e3e3e3
+}
+
+td.list	{
+
+	font-size:12px;
+	padding:3px;
+}
+
+td {
+    color:#333;
+    font-family: "Arial",Helvetica, sans-serif;
+    font-size:12px;
+}
+
+h1	{
+	color:#016ddc;
+	font-family: "Arial",Helvetica, sans-serif;
+	font-size:1em;
+	font-weight:bold;
+	padding-top:0;
+	margin-top:0px;
+	margin-bottom:.5em;
+	text-transform:uppercase; 
+}
+
+h2	{
+	color:#333;
+	font-family: "Arial",Helvetica, sans-serif;
+	font-size:1em;
+	font-weight:bold;
+	padding-bottom:.2em;
+	padding-top:0;
+	margin-bottom:0;
+	margin-top:0;
+}
+
+th	{
+	color:#016ddc;
+	font-family: "Arial",Helvetica, sans-serif;
+	font-size:1em;
+	font-weight:bold;
+	padding-bottom:.2em;
+	padding-top:0;
+	margin-bottom:0;
+	margin-top:0;
+}
+
+a:link.hnav {
+	color:white;
+	text-decoration:none;
+}
+
+a:visited.hnav {
+	color:white;
+	text-decoration:none;
+}
+
+a:hover.hnav {
+	text-decoration:underline;
+	color:white;
+}
+
+a:active.hnav {
+	/*text-decoration:underline;*/
+	color:white;
+}
+	
+a:link	{
+	color:#016ddc;
+	font-family: "arial",Helvetica, sans-serif;
+	font-weight:normal;
+    font-size: 12px;
+	text-decoration: none;
+    
+}
+	a:link:hover	{
+	color:#0277f0;
+	font-family: "arial",Helvetica, sans-serif;
+	font-weight:normal;
+    font-size: 12px;
+	text-decoration: underline;
+    
+}
+    a.top:link	{
+	display: block;
+	font-family: 'Arial',Helvetica, sans-serif;
+	font-size: 12px;
+	font-weight: 600;	
+    padding: 8px;
+	float:left;
+	text-decoration: none;	
+}
+
+	a.topbutton:link	{
+	background-color: #016ddc;
+	font-size: 12px;	
+	color:#fff;	
+  	display: block;
+    padding: 8px;
+    float:left;
+	text-decoration: none;
+}
+	a.topbutton:active	{
+	
+	color:#fff;	
+  	
+}
+	a.topbutton:visited	{
+	
+	color:#fff;	
+  	
+}
+	a.topbutton:link:hover	{
+	background-color: #0277f0;
+    color:#fff;
+	text-decoration: none;	
+}
+.button {
+  background-color: #0262c4;
+  border: none;
+  font-family: "Arial",Helvetica, sans-serif;
+  color: white!important;
+  padding: 5px 10px;
+  font-weight: 300;
+  /*text-align: left;*/
+  text-decoration: none;
+  /*display: inline-block;*/
+  /*float: right;*/
+  font-size: 13px!important;
+  margin: 5px 3px;
+  cursor: pointer;
+}	
+ .button:hover {
+  color: white;
+  background-color: #016ddc;
+}
+ .button:visited {
+  color: white!important;
+  
+}
+	a.button:visited{
+	color:#ffffff;
+	font-size: 13px!important;
+	background-color: #0262c4;
+	padding: 5px 10px;
+	margin: 5px 3px;
+	font-family: "Arial",Helvetica, sans-serif;
+	text-decoration: none;
+}
+	a.button:hover{
+	color:yellow;
+	font-size: 13px!important;
+	background-color: #016ddc;
+	padding: 5px 10px;
+	margin: 5px 3px;
+	font-family: "Arial",Helvetica, sans-serif;
+	text-decoration: none;
+}
+a:visited	{
+	color:#DE5427;
+	font-family: "Arial",Helvetica, sans-serif;
+	font-weight:normal;
+}
+    
+    a.top:visited	{
+	color:#DE5427;
+	font-family: "Arial",Helvetica, sans-serif;
+	font-weight:bold;
+    text-decoration: none;
+}
+
+a:hover	{
+	color:#016ddc;
+	font-family: "Arial",Helvetica, sans-serif;
+	font-weight:normal;
+    text-decoration: underline
+}
+    a.top:hover	{
+	color:#016ddc;
+	text-decoration: underline;
+	}
+
+a:active	{
+	color:rgb(16,26,88);
+	font-family: "Arial",Helvetica, sans-serif;
+	font-weight:bold;
+	font-size:15px;
+	}
+a.main:link {font-weight:normal;}
+a.main:visited {font-weight:normal;}
+a.main:hover {font-weight:normal; text-decoration: 525353}
+a.main:active {font-weight:normal;}
+
+
+	#contact	{
+	clear:both;
+    background-color: #ffffff;    
+	color:#3D3D3D;
+	font-family: "Arial",Helvetica, sans-serif;
+    font-size:11px;
+    padding-top:10px;
+	text-align:center;
+	border-top: 1px dashed #c1c0bf;
+    }
+    .contact    {
+    font-size:11px;
+    background-color:#ffffff;    
+    padding: 0 25px 10px 25px; 
+    margin: 0;    
+    }
+    #footer	{
+	clear:both;
+	color:rgb(77,87,122);
+	font-family: "Arial",Helvetica, sans-serif;
+	font-size:10px;
+	margin:100%;
+	text-align:center;
+	width:100%;
+	
+    }
+	input[type=text] {
+  
+  color:#333;
+  font-size:14px;    
+  padding: 5px 10px;
+  margin: 0 10px 5px 6px;
+  display: inline-block;
+  border: 1px solid #999;
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+	select.select {
+  padding: 3px 10px;
+  color:#333;
+  background-color: #fff;
+  font-size:14px;    
+  border: 1px solid #999;
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+    .optgroup { font-size:14px; color:#333333; padding: 0 3px 5px 3px;}
+	
+	@media print
+	{
+	#main   {border:none; 
+	               width: 7in;
+	               margin-left: -.25in; height: auto;}
+	.leftNav {display:none;}
+	.banner {display:none;}
+	body	{background-image:url("../../portal/images/bg2.png")
+	        background-color:#fff;}
+    
+
+   ul {
+  list-style-type: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+
+}
+
+   ul.b {
+  list-style-type: disc;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+
+}
+li.top {
+  float: left;
+  /*margin: 3px;
+  padding: 0;	*/
+}
+
+li a:top {
+  display: block;
+  padding: 8px;
+  margin: 5px;
+  }
+     li a:top:hover{
+  text-decoration: underline!important;
+ list-style: none;
+		 color:#016ddc;
+}
+
+li a:top:hover:not(.active) {
+  list-style: none;
+  color:#016ddc;
+ 
+    
+}
+
+
+    
+	-->
+</style>
+
+
+
+<BODY margin-left:50; margin-right:50; bgColor="#fff" background="../../images/bg2.png" style="min-height: 100vh; background-repeat: no-repeat;
+  background-attachment: fixed;
+  background-position: center;background-size: cover; margin: 0 auto; max-width: 935px;">
+
+<!--BEGIN MY FLORIDA LICENSE LOGO-->
+<TABLE style="margin-top:45px; margin-left: auto; margin-right: auto" cellSpacing="0" cellPadding="0" width="100%"  bgcolor="#ffffff" id="main">
+     <tr>
+        <td>
+    <table width="100%" cellspacing="0">
+        <tr align="center">
+            <td style="align-content: center; background-color: #58555A; height: 50px; color:#f2f2f2; padding:25px 0; letter-spacing: 3px; font-family: "Arial",Helvetica, sans-serif; font-size: 12px; font-weight:600"><b>THE OFFICIAL SITE OF THE FLORIDA DEPARTMENT OF BUSINESS & PROFESSIONAL REGULATION</b></td>
+        </tr>
+    </table>
+    
+    <table style="width: 100%; background-color:white; padding:20px 0 0 10px" cellspacing="0">
+        <tr>
+   			<td><a href="http://www.myfloridalicense.com/dbpr/"><img ALT="Click here to access the department's home page" SRC="../../images/top_logo2.gif" BORDER="0"></a></td>
+            <td style="width: 300px;">
+                <ul style="list-style-type: none; margin: 0 0 15px 0; padding: 015px 0 0 0; overflow: hidden;font-size: 13px; font-weight:600;">
+                 <li class="listtop"><a class="top" href="http://www.myfloridalicense.com/dbpr/">HOME</a></li>
+				 <li class="listtop"><a class="top"  href="http://www.myfloridalicense.com/DBPR/contact-us/">CONTACT US</a></li>
+				 <li class="listtop"><a class="topbutton" href="https://www.myfloridalicense.com/datamart/mainMenuFLDBPR.do">MY ACCOUNT</a></li>	
+                 </ul>
+            </td> 
+        </tr>
+    </table>
+	<!--END MY FLORIDA LICENSE LOGO-->
+   
+			<table CELLSPACING="0" CELLPADDING="0" WIDTH="100%" ALIGN="CENTER" BORDER="0" VALIGN="top" bgcolor="ffffff">
+                
+  				
+					
+					<!--START BANNER & TOP NAV & LOGGED IN AS-->
+					
+					<!--END BANNER & TOP NAV & LOGGED IN AS-->
+				
+   				<tr VALIGN="TOP">
+					<!--LEFT NAVIGATION-->
+   					<td>
+						<table cellpadding="0" cellspacing="0" border="0" width="225px; margin-bottom:15px" >
+							<tr>
+
+								<td style="text-align: left; font-size: 15px; font-weight:600; padding: 10px 0 11px 15px; color:#016DDC;">ONLINE SERVICES</td>
+                			</tr>
+							<tr>
+
+							<!--	<td style="height: 20px; background-color: #f7f7f7; font-size:14px; padding:10px 15px 5px 15px;"><a class="main" href="/intentions2.asp?SID=" title="Click here to apply for a new license.">Apply for a License</a></td> -->
+								<td BGCOLOR="#b6c9dc"><font size="-1">&nbsp;&nbsp;&nbsp;<a class="main" href="https://www2.myfloridalicense.com/licensing-and-regulation/" title="Click here to apply for a new license."><font face="verdana">Apply for a License</font></a></font></td> 
+							</tr>
+							<tr>
+
+								<td style="height: 20px; background-color: #f7f7f7; font-size:14px; padding:7px 15px;"><a class="main" href="/wl11.asp?mode=0&SID=" title="Click here to search for an individual or organization.">Verify a Licensee</a></td>
+							</tr>
+							<tr>
+
+								<td style="height: 20px; background-color: #f7f7f7; font-size:14px; padding:7px 15px;"><a class="main" href="/wl11.asp?mode=0&SID=&brd=H" title="Click here to View Food and Lodging Inspections.">View Food & Lodging Inspections</a></td>
+							</tr>
+							<tr>
+
+								<td style="height: 20px; background-color: #f7f7f7; font-size:14px; padding:7px 15px;"><a class="main" href="/entercomplaint.asp?SID=" title="Click here to submit a complaint to the Department.">File a Complaint</a></td>
+							</tr>
+							<tr>
+
+								<td style="height: 20px; background-color: #f7f7f7; font-size:14px; padding:7px 15px;"><a class="main" href="/CESearch.asp?SID=" title="Click here to search for a CE Course.">Continuing Education Course Search</a></td> 
+							<!--	<td BGCOLOR="#b6c9dc"><font size="-1">&nbsp;&nbsp;&nbsp;<a class="main" href="/dbpr/business-and-professions/" title="Click here to apply for a new license."><font face="verdana">Apply for a License</font></a></font></td> -->
+							</tr>
+							<tr>
+
+								<td style="height: 20px; background-color: #f7f7f7; font-size:14px; padding:7px 15px;"><a class="main" href="/viewapps.asp?SID=" title="Click here to view your application status.">View Application Status</a></td>
+							</tr>
+							<tr>
+
+								<td style="height: 20px; background-color: #f7f7f7; font-size:14px; padding:7px 15px;"><a class="main" href="/examSchedule.asp?SID=" title="Click here to find out more information about your examination registration or the results.">Find Exam Information</a></td>
+							</tr>
+							<tr>
+
+								<td style="height: 20px; background-color: #f7f7f7; font-size:14px; padding:7px 15px;"><a class="main" href="/sto/unlicensedactivity/index.asp?SID=" title="Click here to view unlicensed activity.">Unlicensed Activity Search </a></td>
+							</tr>
+							<tr>
+
+								<td style="height: 20px; background-color: #f7f7f7; font-size:14px; padding:7px 15px 15px 15px;"><a class="main" href="/delinquency_search.asp?SID=" title="Click here to search the Alcoholic Beverages and Tobacco delinquency search">AB&amp;T Delinquent Invoice & Activity List Search</a></td>
+							</tr>
+							
+							
+							
+							
+							
+							
+							
+							
+							
+							
+														
+							
+							
+							
+							
+							
+							
+							
+														<tr>
+
+								<td BGCOLOR="#f7f7f7"></td>
+							</tr>
+							
+						</table>
+					</td>
+
+				
+					<!--END LEFT NAV-->
+<!--***END TOP INCLULDE FILE***-->
+<body>
+	<td colspan="2" valign="top" width="99%">
+						<!--START LOGGED IN AS & TIME BAR-->
+						<table cellSpacing="0" cellPadding="0" border="0" width="99%">
+                           <tr> 
+                               <td style="text-align: left; font-size: 15px; font-weight:600; padding: 10px 0 5px 10px; color:#016DDC;">LICENSEE SEARCH OPTIONS</td>
+                               <td style="text-align: right; font-size:12px; padding: 10px 25px 0 0;"><font face="arial, helvetica, verdana, sans-serif"><em>11:32:11 PM&nbsp;10/9/2026</em></font></td>
+                            </tr>
+                        </table>
+		<!--END LOGGED IN AS & TIME BAR-->
+		<table cellSpacing="0" cellPadding="0" width="99%" border="0">
+			<tr></tr>
+		</table>
+<form method="post" name="reportForm"  onSubmit="return validate();" action="wl11.asp?mode=3&search=LicNbr&SID=&brd=&typ=">	
+		<table cellspacing="0" border="0" width="99%" align="center">
+			<tr>
+				<td align="middle">
+					<table width="100%" border="0" align="left" cellspacing="0" cellpadding="3">
+						<tr>
+							<td colspan="2">
+								<input TYPE="hidden" NAME="hSID" VALUE=""/>
+								<input TYPE="hidden" NAME="hSearchType" VALUE="LicNbr"/>
+								<input TYPE="hidden" NAME="hLastName" VALUE=""/>
+								<input TYPE="hidden" NAME="hFirstName" VALUE=""/>
+								<input TYPE="hidden" NAME="hMiddleName" VALUE=""/>
+								<input TYPE="hidden" NAME="hOrgName" VALUE=""/>
+								<input TYPE="hidden" NAME="hSearchOpt" VALUE="Organization"/>
+								<input TYPE="hidden" NAME="hSearchOpt2" VALUE=""/>
+								<input TYPE="hidden" NAME="hSearchAltName" VALUE="Alt"/>
+								<input TYPE="hidden" name="hSearchPartName" value=""/>
+								<input TYPE="hidden" name="hSearchFuzzy" value=""/>
+								<input TYPE="hidden" NAME="hDivision" VALUE="ALL"/>
+								<input TYPE="hidden" NAME="hBoard" VALUE=""/>
+								<input TYPE="hidden" NAME="hLicenseType" VALUE=""/>
+								<input TYPE="hidden" NAME="hSpecQual" VALUE=""/>
+								<input TYPE="hidden" NAME="hAddrType" VALUE=""/>
+								<input TYPE="hidden" NAME="hCity" VALUE=""/>
+								<input TYPE="hidden" NAME="hCounty" VALUE=""/>
+								<input TYPE="hidden" NAME="hState" VALUE=""/>
+								<input TYPE="hidden" NAME="hLicNbr" VALUE="EC99000101"/>
+								<input TYPE="hidden" NAME="hAction"/>
+								<input TYPE="hidden" NAME="hCurrPage" VALUE="1"/>
+								<input TYPE="hidden" NAME="hTotalPages" VALUE="1"/>
+								<input TYPE="hidden" NAME="hTotalRecords" VALUE="2"/>
+								<input TYPE="hidden" NAME="hPageAction"/>
+								<input TYPE="hidden" NAME="hDDChange"/>
+								<input TYPE="hidden" NAME="hBoardType" VALUE=""/>
+								<input TYPE="hidden" NAME="hLicTyp" VALUE=""/>
+								<input TYPE="hidden" NAME="hSearchHistoric" VALUE=""/>
+								<input TYPE="hidden" NAME="hRecsPerPage" VALUE="10"/>
+								<font face="Arial" SIZE="-1" color="Red">
+								<strong></strong>
+								</font>
+							</td>
+						</tr>
+<tr><td colspan='1' align='center' bgcolor='#ffffff'><font face=Arial color=#000000 size=-1><p><center><b>Data Contained In Search Results Is Current As Of 10/09/2026 11:30 PM.</b></center><p/></font></td></tr>
+						<tr>
+							<td colspan="3" style="margin-bottom:10px">
+								<font face="Arial" SIZE="-1" color="#016ddc">
+									<strong>
+										Search Results
+									 - 2 Records
+									
+									</strong>
+									<p/>
+								</font>
+							</td>
+						</tr>
+						<tr>
+							<td colspan="2">
+								<font face="Arial" SIZE="-1" color="#000000">
+									<strong>
+										Please see our <a href="/glossary.asp?SID="><strong>glossary of terms</strong></a> for an explanation of the license status shown in these search results.
+									</strong>
+									<p/>
+								</font>
+							</td>
+						</tr>
+						<tr>
+							<td colspan="2">
+								<font face="Arial" SIZE="-1" color="#000000">
+									<strong>
+										For additional information, including any complaints or discipline, click on the name.
+									</strong>
+									<p/>
+								</font>
+							</td>
+						</tr>
+						<tr>
+							<td>
+								<table width="100%" border="0" cellspacing="0" cellpadding="4" bgcolor="#f1f1f1">
+									<tr height="20">
+	
+										<td colspan="1" width="20%" align="center">
+											<font face="Arial" color="#000000" size="-1">
+												<span title="This column represents the type of license held by the individual or establishment."><strong>License Type</strong></span>
+											</font>
+										</td>		
+	
+									
+										<td align="center">
+											<font face="Arial" color="#000000" size="-1">
+												<span title="This column represents the name of the individual or establishment that holds the license."><strong>Name</strong></span>
+											</font>
+										</td>
+									
+										<td align="center">
+											<font face="Arial" color="#000000" size="-1">
+												<span title="This column represents the type of name being displayed, such as DBA (Doing Business As)."><strong>Name<br/>Type</strong></span>
+											</font>
+										</td>
+									
+										<td align="center">
+											<font face="Arial" color="#000000" size="-1">
+												<span title="This column represents the license number and type of license held by the individual or establishment."><strong>License<br/>Number/<br/>Rank</strong></span>
+											</font>
+										</td>
+								
+										<td align="center">
+											<font face="Arial" color="#000000" size="-1">
+												<span title="This column represents the license status and expiration date of the license held by the individual or establishment."><strong>Status/Expires</strong></span>
+											</font>
+										</td>
+	
+									</tr>
+									
+								
+								
+									<tr height='40'><td colspan='1' width='20%' align='center' bgcolor='#ffffff'><font face=Arial color=#000000 size=-1>Certified Electrical Contractor</font></td><td colspan='1' align='center' bgcolor='#ffffff'><font face=Arial color=#000000 size=-1><a href='LicenseDetail.asp?SID=&id=00000000000000000000000000000000'>BRIGHT CURRENT ELECTRIC, LLC</a></font></td><td colspan='1' align='center' bgcolor='#ffffff'><font face=Arial color=#000000 size=-1>DBA</font></td><td colspan='1' align='center' bgcolor='#ffffff'><font face=Arial color=#000000 size=-1>EC99000101<br/>Cert Electrical</font></td><td colspan='1' align='center' bgcolor='#ffffff'><font face=Arial color=#000000 size=-1>Current, Active<br/>08/31/2028</font></td><tr height='40'> <td colspan='6' align='left' bgcolor='#ffffff'><table><tr><td align='left' bgcolor='#ffffff'><font face=Arial color=#000000 size='-2'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span title='This is the address where the place of business is physically located.'><b>License Location Address*:&nbsp;&nbsp;&nbsp;</b></font></td> <td align='left' bgcolor='#ffffff'><font face=Arial color=#000000 size='-2'>100 EXAMPLE WAY  ORLANDO, FL 32801</font></td></tr><tr><td align='left' bgcolor='#ffffff'><font face=Arial color=#000000 size='-2'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span title='This is the primary address on file for this individual or establishment.'><b>Main Address*:</b></span></font></td> <td align='left' bgcolor='#ffffff'><font face=Arial color=#000000 size='-2'>100 EXAMPLE WAY  ORLANDO, FL 32801</font></td></tr></table></td></tr><tr height='40'><td colspan='1' width='20%' align='center' bgcolor='#f1f1f1'><font face=Arial color=#000000 size=-1>Certified Electrical Contractor</font></td><td colspan='1' align='center' bgcolor='#f1f1f1'><font face=Arial color=#000000 size=-1><a href='LicenseDetail.asp?SID=&id=00000000000000000000000000000000'>SAMPLE, ALEX J</a></font></td><td colspan='1' align='center' bgcolor='#f1f1f1'><font face=Arial color=#000000 size=-1>Primary</font></td><td colspan='1' align='center' bgcolor='#f1f1f1'><font face=Arial color=#000000 size=-1>EC99000101<br/>Cert Electrical</font></td><td colspan='1' align='center' bgcolor='#f1f1f1'><font face=Arial color=#000000 size=-1>Current, Active<br/>08/31/2028</font></td><tr height='40'> <td colspan='6' align='left' bgcolor='#f1f1f1'><table><tr><td align='left' bgcolor='#f1f1f1'><font face=Arial color=#000000 size='-2'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span title='This is the address where the place of business is physically located.'><b>License Location Address*:&nbsp;&nbsp;&nbsp;</b></font></td> <td align='left' bgcolor='#f1f1f1'><font face=Arial color=#000000 size='-2'>100 EXAMPLE WAY  ORLANDO, FL 32801</font></td></tr><tr><td align='left' bgcolor='#f1f1f1'><font face=Arial color=#000000 size='-2'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span title='This is the primary address on file for this individual or establishment.'><b>Main Address*:</b></span></font></td> <td align='left' bgcolor='#f1f1f1'><font face=Arial color=#000000 size='-2'>100 EXAMPLE WAY  ORLANDO, FL 32801</font></td></tr></table></td></tr>
+
+									<tr>
+										<td colspan="7" align="right" bgcolor="#FFFFFF">
+											<font face="Arial" SIZE="-1" color="#000000">
+												
+												<button class="button" name="SearchRefine" tabindex="7" src="portal/images/backButton.gif" value="Search" alt="Click here to refine your search options." onClick="return ChangePage(6);" border="0">Back</button>
+												<button class="button"><a class="button" href="wl11.asp?mode=0&SID=&brd=&typ=N" alt="Click here to begin a new search.">New Search</button></a>
+											</font>
+										</td>
+									</tr>
+	
+									<tr>
+										<td colspan="7" align="left" bgcolor="#FFFFFF">
+											<font face="Arial" SIZE="-2" color="#000000">
+												<b>* denotes </b><br/>
+												&nbsp;&nbsp;&nbsp;&nbsp; Main Address - This address is the Primary Address on file.<br/>
+				 								&nbsp;&nbsp;&nbsp;&nbsp; Mailing Address - This is the address where the mail associated with a particular license will be sent (if different from the Main or License Location addresses). <br/> 
+												&nbsp;&nbsp;&nbsp;&nbsp; License Location Address - This is the address where the place of business is physically located.<br/>
+ 
+											</font>
+										</td>
+									</tr>
+
+								</table>
+							</td>
+						</tr>					
+			
+
+
+</tr>
+
+					</table>
+</form>
+<!--***************************    END MAIN CONTENT HERE   ****************************-->
+<!--***END MAIN BODY INSERT***-->
+</table></table><tr style="padding: 10px 0;"></tr>
+<!--***START BOTTOM INCLUDE FILE***-->
+<table style="background-color:white; margin-bottom: 20px;">
+<tr>
+    <td style="padding: 15px 0;" colspan="3" align="center";>
+                    <div id="contact" class="contact">
+                        <a style="color: blue; font-weight: 600; font-family: Arial; font-size: 10px;" class="footer" target=_blank href="https://www.google.com/maps/place/2601+N+Blair+Stone+Rd,+Tallahassee,+FL+32301/@30.425336,-84.248805,16z/data=!4m6!3m5!1s0x88ec5fbfde4e8707:0x65a6d50a8531fb03!8m2!3d30.4261405!4d-84.2487879!16s%2Fg%2F11c23qhnk5?hl=en&entry=ttu">2601 Blair Stone Road, Tallahassee FL 32399</a> 
+                        :: Email: <a style="color: blue; font-weight: 600; font-family: Arial; font-size: 10px;" class="footer" href="https://www2.myfloridalicense.com/contact-us/">Customer Contact Center</a> :: Customer Contact Center: 850.487.1395
+                    </div>
+		<!--START DISCLAIMER--> 
+                    <p style="font-size:10px;font-family: Arial; padding: 0 45px 10px 45px; margin: 0; width:auto; text-align: center; color:#3D3D3D">The State of Florida is an AA/EEO employer. <a style="color: blue; font-weight: 600; font-size: 10px;font-family: 'Arial', Helvetica,  'sans-serif'" class="footer" href="http://www.myflorida.com/myflorida/copyright.html">Copyright 2007-2010 State of Florida.</a>  <a style="color: blue; font-weight: 600; font-size: 10px;" class="footer" href="https://www2.myfloridalicense.com/privacy-policy/">Privacy Statement</a></p>
+                    <p style="font-size:10px; font-weight:400;font-family: Arial; padding: 0 45px 10px 45px; margin: 0; width:auto; text-align: center; color:#3D3D3D;">Under Florida law, email addresses are public records. If you do not want your email address released in response to a public-records request, do not send electronic mail to this entity. Instead, contact the office by phone or by traditional mail. 
+	    If you have any questions, please contact 850.487.1395.  *Pursuant to Section 455.275(1), Florida Statutes, effective October 1, 2012, licensees licensed under Chapter 455, F.S. must provide the Department with an email address if they have one.  
+	    The emails provided may be used for official communication with the licensee.  However email addresses are public record. If you do not wish to supply a personal address, please provide the Department with an email address which can be made available to the public.  
+	    Please see our <a style="color: blue; font-weight: 600; font-family: Arial; font-size: 10px;" class="footer" target=_blank href="http://www.leg.state.fl.us/Statutes/index.cfm?App_mode=Display_Statute&URL=0400-0499/0455/0455ContentsIndex.html&StatuteYear=2021&Title=%2D%3E2021%2D%3EChapter%20455">Chapter 455</a> page to determine if you are affected by this change.</p>
+    </td>
+               
+</table>
+
+
+</body></html><!--***END BOTTOM INCLUDE FILE***-->
+                                                  
+</table>
+                                                        </table>
+</body>
+</html>

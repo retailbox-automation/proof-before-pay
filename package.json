@@ -1,0 +1,28 @@
+{
+  "name": "proof-before-pay",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Proof Before Pay: Alexa+ add-on (MCP 2025-11-25, Streamable HTTP) that pays a contractor only for proven work",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node build.ts",
+    "server": "node server/server.ts",
+    "host": "node host/serve.ts",
+    "verify": "node verify/run.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
+    "@modelcontextprotocol/core": "2.0.0",
+    "@modelcontextprotocol/ext-apps": "2.0.0",
+    "@modelcontextprotocol/node": "2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "playwright": "1.63.0"
+  }
+}

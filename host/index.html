@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Alexa+ host simulator (spike)</title>
+  <style>
+    body { font: 15px/1.4 system-ui, sans-serif; margin: 16px; max-width: 760px; background: #f6f7f9; color: #111; }
+    header, form, #transcript, #card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+    code { font-size: 13px; }
+    form { display: flex; gap: 8px; }
+    #utterance { flex: 1; padding: 6px 8px; font-size: 15px; }
+    #transcript { min-height: 80px; }
+    #transcript p { margin: 4px 0; }
+    #transcript .user { color: #1c4fbf; }
+    #transcript .assistant { color: #1d6b32; }
+    #transcript .error { color: #b00020; }
+    #card iframe { width: 100%; height: 220px; border: 0; display: block; }
+    #card:empty { display: none; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>Alexa+ host simulator</strong> (verify-spike, no LLM)
+    <div>user: <code id="user"></code> · protocol: <code id="protocol">connecting…</code> · session: <code id="session">-</code></div>
+    <div>tools: <code id="tools">-</code> <button id="new-session" type="button">New session</button></div>
+  </header>
+  <form id="say">
+    <input id="utterance" autocomplete="off" placeholder='Try "remember buy milk", "what do I have", "show my card"'>
+    <button type="submit">Send</button>
+  </form>
+  <div id="transcript"></div>
+  <div id="card"></div>
+  <script type="module" src="/host.js"></script>
+</body>
+</html>
