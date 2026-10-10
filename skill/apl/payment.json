@@ -1,0 +1,143 @@
+{
+  "type": "APL",
+  "version": "2024.3",
+  "description": "Proof Before Pay - pre-checkout card. Two stacks: what is proven and can be paid now, and what waits for the homeowner. Every evidence row names its source. The skill never takes payment: Alexa completes checkout on the platform.",
+  "theme": "dark",
+  "resources": [
+    {
+      "colors": {
+        "pageBg": "#0E1116",
+        "cardBg": "#14181E",
+        "innerBg": "#1B2028",
+        "primary": "#2D415E",
+        "green": "#3DDC97",
+        "amber": "#F5B547",
+        "fg": "#F2F2F2",
+        "muted": "#B5B5B5",
+        "line": "#2A313B"
+      },
+      "dimensions": { "gutter": "32dp" }
+    }
+  ],
+  "styles": {
+    "title": { "values": [{ "fontSize": "30dp", "fontWeight": "700", "color": "@fg" }] },
+    "subtitle": { "values": [{ "fontSize": "18dp", "color": "@muted" }] },
+    "stackHead": { "values": [{ "fontSize": "18dp", "fontWeight": "600", "color": "@muted" }] },
+    "amount": { "values": [{ "fontSize": "40dp", "fontWeight": "700" }] },
+    "rowLabel": { "values": [{ "fontSize": "19dp", "fontWeight": "600", "color": "@fg" }] },
+    "rowDetail": { "values": [{ "fontSize": "15dp", "color": "@muted" }] }
+  },
+  "layouts": {
+    "EvidenceRow": {
+      "parameters": ["row", "tone"],
+      "item": {
+        "type": "Container",
+        "direction": "row",
+        "spacing": "10dp",
+        "paddingTop": "8dp",
+        "paddingBottom": "8dp",
+        "items": [
+          { "type": "Text", "text": "${row.mark}", "fontSize": "22dp", "fontWeight": "700", "width": "32dp", "color": "${tone}" },
+          {
+            "type": "Container",
+            "grow": 1,
+            "shrink": 1,
+            "items": [
+              { "type": "Text", "style": "rowLabel", "text": "${row.label}", "maxLines": 2 },
+              { "type": "Text", "style": "rowDetail", "text": "${row.detail}${row.source ? ' · ' + row.source : ''}", "maxLines": 2 }
+            ]
+          }
+        ]
+      }
+    },
+    "Stack": {
+      "parameters": ["head", "amountText", "tone", "rows"],
+      "item": {
+        "type": "Container",
+        "grow": 1,
+        "shrink": 1,
+        "width": "50%",
+        "backgroundColor": "@innerBg",
+        "borderRadius": "16dp",
+        "borderWidth": "2dp",
+        "borderColor": "${tone}",
+        "paddingLeft": "20dp",
+        "paddingRight": "20dp",
+        "paddingTop": "16dp",
+        "paddingBottom": "12dp",
+        "items": [
+          { "type": "Text", "style": "stackHead", "text": "${head}" },
+          { "type": "Text", "style": "amount", "color": "${tone}", "text": "${amountText}" },
+          {
+            "type": "Sequence",
+            "grow": 1,
+            "shrink": 1,
+            "data": "${rows}",
+            "items": [{ "type": "EvidenceRow", "row": "${data}", "tone": "${tone}" }]
+          }
+        ]
+      }
+    }
+  },
+  "mainTemplate": {
+    "parameters": ["payload"],
+    "items": [
+      {
+        "type": "Container",
+        "width": "100vw",
+        "height": "100vh",
+        "backgroundColor": "@pageBg",
+        "paddingLeft": "@gutter",
+        "paddingRight": "@gutter",
+        "paddingTop": "20dp",
+        "paddingBottom": "14dp",
+        "items": [
+          { "type": "Text", "style": "title", "text": "${payload.card.title}", "maxLines": 1 },
+          { "type": "Text", "style": "subtitle", "text": "${payload.card.subtitle}", "maxLines": 1, "paddingBottom": "12dp" },
+          {
+            "type": "Container",
+            "direction": "row",
+            "grow": 1,
+            "shrink": 1,
+            "items": [
+              { "type": "Stack", "head": "Pay now · proven", "amountText": "${payload.payment.payNowText}", "tone": "${@green}", "rows": "${payload.payment.proven}" },
+              { "type": "Stack", "spacing": "16dp", "head": "Waits for you", "amountText": "${payload.payment.waitsText}", "tone": "${@amber}", "rows": "${payload.payment.waiting}" }
+            ]
+          },
+          {
+            "type": "Container",
+            "direction": "row",
+            "alignItems": "center",
+            "paddingTop": "12dp",
+            "items": [
+              {
+                "type": "Container",
+                "grow": 1,
+                "shrink": 1,
+                "items": [
+                  { "type": "Text", "style": "subtitle", "color": "@fg", "text": "Subtotal ${payload.payment.subtotalText} · Fees ${payload.payment.feesText} · Total ${payload.payment.totalText}", "maxLines": 1 },
+                  { "type": "Text", "style": "rowDetail", "text": "${payload.card.footer} Alexa completes checkout; this skill never asks for a card or a voice code.", "maxLines": 2 }
+                ]
+              },
+              {
+                "type": "TouchWrapper",
+                "when": "${payload.payment.canPay}",
+                "onPress": [{ "type": "SendEvent", "arguments": ["pay"] }],
+                "item": {
+                  "type": "Frame",
+                  "backgroundColor": "@primary",
+                  "borderRadius": "28dp",
+                  "paddingLeft": "28dp",
+                  "paddingRight": "28dp",
+                  "paddingTop": "12dp",
+                  "paddingBottom": "12dp",
+                  "item": { "type": "Text", "text": "${payload.payment.payLabel}", "fontSize": "22dp", "fontWeight": "700", "color": "@fg" }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

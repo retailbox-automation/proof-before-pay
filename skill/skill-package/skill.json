@@ -1,0 +1,66 @@
+{
+  "manifest": {
+    "publishingInformation": {
+      "locales": {
+        "en-US": {
+          "name": "Proof Before Pay",
+          "summary": "Hire a licensed pro and pay only for work that is proven.",
+          "description": "Development-stage demo skill for the Amazon Build, Ship, Shape hackathon. Sandbox data only; payment is completed by Alexa, never by this skill.",
+          "examplePhrases": [
+            "Alexa, open proof before pay",
+            "I need a licensed electrician",
+            "he sent the invoice"
+          ],
+          "keywords": []
+        }
+      },
+      "isAvailableWorldwide": false,
+      "distributionCountries": [
+        "US"
+      ],
+      "testingInstructions": "Development stage only; not for certification."
+    },
+    "apis": {
+      "custom": {
+        "endpoint": {
+          "uri": "https://REPLACE-WITH-YOUR-TUNNEL-HOST/alexa",
+          "sslCertificateType": "Wildcard"
+        },
+        "interfaces": [
+          {
+            "type": "ALEXA_PRESENTATION_APL",
+            "supportedViewports": [
+              {
+                "mode": "HUB",
+                "shape": "RECTANGLE",
+                "minWidth": 960,
+                "maxWidth": 1279,
+                "minHeight": 600,
+                "maxHeight": 959
+              },
+              {
+                "mode": "HUB",
+                "shape": "RECTANGLE",
+                "minWidth": 1280,
+                "maxWidth": 1920,
+                "minHeight": 600,
+                "maxHeight": 1279
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "manifestVersion": "1.0",
+    "privacyAndCompliance": {
+      "allowsPurchases": false,
+      "usesPersonalInfo": false,
+      "isChildDirected": false,
+      "isExportCompliant": true,
+      "containsAds": false,
+      "locales": {
+        "en-US": {}
+      }
+    }
+  }
+}

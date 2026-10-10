@@ -1,0 +1,258 @@
+{
+  "type": "APL",
+  "version": "2024.3",
+  "description": "Proof Before Pay - generic card (scope read-back, booking confirmation, draft note, other results).",
+  "theme": "dark",
+  "resources": [
+    {
+      "colors": {
+        "pageBg": "#0E1116",
+        "cardBg": "#14181E",
+        "innerBg": "#1B2028",
+        "primary": "#2D415E",
+        "green": "#3DDC97",
+        "amber": "#F5B547",
+        "fg": "#F2F2F2",
+        "muted": "#B5B5B5",
+        "line": "#2A313B"
+      },
+      "dimensions": {
+        "gutter": "32dp"
+      }
+    }
+  ],
+  "styles": {
+    "title": {
+      "values": [
+        {
+          "fontSize": "32dp",
+          "fontWeight": "700",
+          "color": "@fg"
+        }
+      ]
+    },
+    "subtitle": {
+      "values": [
+        {
+          "fontSize": "19dp",
+          "color": "@muted"
+        }
+      ]
+    },
+    "label": {
+      "values": [
+        {
+          "fontSize": "22dp",
+          "fontWeight": "600",
+          "color": "@fg"
+        }
+      ]
+    },
+    "detail": {
+      "values": [
+        {
+          "fontSize": "17dp",
+          "color": "@muted"
+        }
+      ]
+    }
+  },
+  "mainTemplate": {
+    "parameters": [
+      "payload"
+    ],
+    "items": [
+      {
+        "type": "Container",
+        "width": "100vw",
+        "height": "100vh",
+        "backgroundColor": "@pageBg",
+        "paddingLeft": "@gutter",
+        "paddingRight": "@gutter",
+        "paddingTop": "22dp",
+        "paddingBottom": "14dp",
+        "items": [
+          {
+            "type": "Text",
+            "style": "title",
+            "text": "${payload.card.title}",
+            "maxLines": 1
+          },
+          {
+            "type": "Text",
+            "style": "subtitle",
+            "text": "${payload.card.subtitle}",
+            "maxLines": 1,
+            "paddingBottom": "12dp"
+          },
+          {
+            "type": "Frame",
+            "when": "${payload.card.hero}",
+            "backgroundColor": "@cardBg",
+            "borderRadius": "16dp",
+            "borderWidth": "2dp",
+            "borderColor": "${@green}",
+            "paddingLeft": "20dp",
+            "paddingRight": "20dp",
+            "paddingTop": "12dp",
+            "paddingBottom": "12dp",
+            "item": {
+              "type": "Text",
+              "text": "${payload.card.hero}",
+              "fontSize": "28dp",
+              "fontWeight": "700",
+              "color": "@green",
+              "maxLines": 2
+            }
+          },
+          {
+            "type": "ScrollView",
+            "grow": 1,
+            "shrink": 1,
+            "item": {
+              "type": "Container",
+              "items": [
+                {
+                  "type": "Container",
+                  "data": "${payload.card.rows}",
+                  "items": [
+                    {
+                      "type": "Container",
+                      "direction": "row",
+                      "spacing": "10dp",
+                      "backgroundColor": "@innerBg",
+                      "borderRadius": "14dp",
+                      "paddingLeft": "18dp",
+                      "paddingRight": "18dp",
+                      "paddingTop": "12dp",
+                      "paddingBottom": "12dp",
+                      "items": [
+                        {
+                          "type": "Text",
+                          "text": "${data.mark}",
+                          "fontSize": "24dp",
+                          "fontWeight": "700",
+                          "width": "36dp",
+                          "color": "${data.state == 'ok' ? @green : (data.state == 'info' ? @muted : @amber)}"
+                        },
+                        {
+                          "type": "Container",
+                          "grow": 1,
+                          "shrink": 1,
+                          "items": [
+                            {
+                              "type": "Text",
+                              "style": "label",
+                              "text": "${data.label}",
+                              "maxLines": 2
+                            },
+                            {
+                              "type": "Text",
+                              "style": "detail",
+                              "text": "${data.detail}${data.source ? ' · ' + data.source : ''}",
+                              "maxLines": 2
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "Container",
+                  "data": "${payload.card.fields}",
+                  "items": [
+                    {
+                      "type": "Container",
+                      "direction": "row",
+                      "spacing": "8dp",
+                      "paddingTop": "6dp",
+                      "items": [
+                        {
+                          "type": "Text",
+                          "style": "detail",
+                          "text": "${data.label}",
+                          "width": "160dp"
+                        },
+                        {
+                          "type": "Text",
+                          "style": "label",
+                          "fontSize": "18dp",
+                          "text": "${data.value}",
+                          "grow": 1,
+                          "shrink": 1,
+                          "maxLines": 2
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "Frame",
+                  "when": "${payload.card.note}",
+                  "backgroundColor": "@innerBg",
+                  "borderRadius": "14dp",
+                  "paddingLeft": "18dp",
+                  "paddingRight": "18dp",
+                  "paddingTop": "14dp",
+                  "paddingBottom": "14dp",
+                  "item": {
+                    "type": "Text",
+                    "style": "label",
+                    "fontSize": "19dp",
+                    "fontWeight": "400",
+                    "text": "${payload.card.noteHtml}"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "Container",
+            "direction": "row",
+            "alignItems": "center",
+            "paddingTop": "12dp",
+            "items": [
+              {
+                "type": "Text",
+                "style": "detail",
+                "text": "${payload.card.footer}",
+                "grow": 1,
+                "shrink": 1,
+                "maxLines": 2
+              },
+              {
+                "type": "TouchWrapper",
+                "when": "${payload.card.action}",
+                "onPress": [
+                  {
+                    "type": "SendEvent",
+                    "arguments": [
+                      "action"
+                    ]
+                  }
+                ],
+                "item": {
+                  "type": "Frame",
+                  "backgroundColor": "@primary",
+                  "borderRadius": "28dp",
+                  "paddingLeft": "28dp",
+                  "paddingRight": "28dp",
+                  "paddingTop": "12dp",
+                  "paddingBottom": "12dp",
+                  "item": {
+                    "type": "Text",
+                    "text": "${payload.card.action}",
+                    "fontSize": "22dp",
+                    "fontWeight": "700",
+                    "color": "@fg"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

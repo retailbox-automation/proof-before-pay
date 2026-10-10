@@ -15,7 +15,10 @@
     "test": "node --test \"src/**/*.test.ts\" \"scripts/**/*.test.ts\"",
     "sandbox": "node src/sandbox/server.ts",
     "backtest": "node scripts/backtest.ts",
-    "demo": "node scripts/demo.ts"
+    "demo": "node scripts/demo.ts",
+    "skill:start": "node skill/src/server.ts",
+    "skill:test": "node --test \"skill/test/*.test.ts\"",
+    "skill:bundle": "esbuild skill/src/lambda.ts --bundle --platform=node --format=cjs --target=node16 --loader:.json=json --outfile=skill/dist/lambda/index.js"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "2.0.0",
@@ -23,6 +26,8 @@
     "@modelcontextprotocol/ext-apps": "2.0.0",
     "@modelcontextprotocol/node": "2.0.0",
     "@modelcontextprotocol/server": "2.0.0",
+    "ask-sdk-core": "2.14.0",
+    "ask-sdk-model": "1.86.0",
     "zod": "4.6.5"
   },
   "devDependencies": {

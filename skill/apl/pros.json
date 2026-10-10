@@ -1,0 +1,107 @@
+{
+  "type": "APL",
+  "version": "2024.3",
+  "description": "Proof Before Pay - pros list. Licensed pros first; pros whose license is not in the state registry are shown dimmed and marked left out.",
+  "theme": "dark",
+  "resources": [
+    {
+      "colors": {
+        "pageBg": "#0E1116",
+        "cardBg": "#14181E",
+        "innerBg": "#1B2028",
+        "primary": "#2D415E",
+        "green": "#3DDC97",
+        "amber": "#F5B547",
+        "fg": "#F2F2F2",
+        "muted": "#B5B5B5",
+        "line": "#2A313B"
+      },
+      "dimensions": { "gutter": "32dp", "rowGap": "12dp" }
+    }
+  ],
+  "styles": {
+    "title": { "values": [{ "fontSize": "34dp", "fontWeight": "700", "color": "@fg" }] },
+    "subtitle": { "values": [{ "fontSize": "20dp", "color": "@muted" }] },
+    "label": { "values": [{ "fontSize": "24dp", "fontWeight": "600", "color": "@fg" }] },
+    "detail": { "values": [{ "fontSize": "18dp", "color": "@muted" }] },
+    "source": { "values": [{ "fontSize": "16dp", "color": "@muted", "fontStyle": "italic" }] }
+  },
+  "mainTemplate": {
+    "parameters": ["payload"],
+    "items": [
+      {
+        "type": "Container",
+        "width": "100vw",
+        "height": "100vh",
+        "backgroundColor": "@pageBg",
+        "paddingLeft": "@gutter",
+        "paddingRight": "@gutter",
+        "paddingTop": "24dp",
+        "paddingBottom": "16dp",
+        "items": [
+          { "type": "Text", "style": "title", "text": "${payload.card.title}", "maxLines": 1 },
+          { "type": "Text", "style": "subtitle", "text": "${payload.card.subtitle}", "maxLines": 1, "paddingBottom": "16dp" },
+          {
+            "type": "Sequence",
+            "grow": 1,
+            "shrink": 1,
+            "data": "${payload.card.rows}",
+            "items": [
+              {
+                "type": "Container",
+                "direction": "row",
+                "alignItems": "center",
+                "backgroundColor": "${data.state == 'ok' ? @cardBg : @innerBg}",
+                "opacity": "${data.state == 'ok' ? 1 : 0.6}",
+                "borderRadius": "16dp",
+                "borderWidth": "1dp",
+                "borderColor": "@line",
+                "paddingLeft": "20dp",
+                "paddingRight": "20dp",
+                "paddingTop": "14dp",
+                "paddingBottom": "14dp",
+                "spacing": "@rowGap",
+                "items": [
+                  {
+                    "type": "Text",
+                    "text": "${data.mark}",
+                    "fontSize": "30dp",
+                    "fontWeight": "700",
+                    "width": "48dp",
+                    "color": "${data.state == 'ok' ? @green : @amber}"
+                  },
+                  {
+                    "type": "Container",
+                    "grow": 1,
+                    "shrink": 1,
+                    "items": [
+                      { "type": "Text", "style": "label", "text": "${data.state == 'ok' ? data.label : 'Left out: ' + data.label}", "maxLines": 1 },
+                      { "type": "Text", "style": "detail", "text": "${data.detail}", "maxLines": 2 },
+                      { "type": "Text", "style": "source", "text": "${data.source ? 'Source: ' + data.source : ''}", "maxLines": 1 }
+                    ]
+                  },
+                  {
+                    "type": "TouchWrapper",
+                    "when": "${data.action}",
+                    "onPress": [{ "type": "SendEvent", "arguments": ["book", "${data.actionMessage}"] }],
+                    "item": {
+                      "type": "Frame",
+                      "backgroundColor": "@primary",
+                      "borderRadius": "24dp",
+                      "paddingLeft": "24dp",
+                      "paddingRight": "24dp",
+                      "paddingTop": "10dp",
+                      "paddingBottom": "10dp",
+                      "item": { "type": "Text", "text": "${data.action}", "fontSize": "20dp", "fontWeight": "700", "color": "@fg" }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          { "type": "Text", "style": "detail", "text": "${payload.card.footer}", "paddingTop": "8dp", "maxLines": 1 }
+        ]
+      }
+    ]
+  }
+}
