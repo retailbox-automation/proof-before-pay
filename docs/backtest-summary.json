@@ -1,0 +1,166 @@
+{
+  "engine": "backtest-v1",
+  "input": {
+    "file": "data/backtest/engagements.anon.json",
+    "sha256": "42a5d664de489a45bc13385002dfc6b39268b15eff8e1acef7bbc5665e0f7ea7",
+    "rows": 141
+  },
+  "window": {
+    "companiesSinceClosing": 119,
+    "engagementsSinceClosing": 136,
+    "hiredSinceClosing": 13,
+    "wentWrongSinceClosing": 5,
+    "wentWrongCaughtSinceClosing": 5
+  },
+  "prehire": {
+    "licenseCaught": 3,
+    "ids": [
+      "E117",
+      "E121",
+      "E124"
+    ]
+  },
+  "totals": {
+    "engagements": 141,
+    "hired": 15,
+    "wentWrong": 5,
+    "wentWrongCaught": 5,
+    "wentWrongFullyCaught": 3,
+    "wentWrongNotCaught": 0
+  },
+  "gates": [
+    {
+      "id": "license",
+      "title": "License gate",
+      "catches": [
+        "no_license",
+        "license_mismatch"
+      ],
+      "engagementsCaught": 1,
+      "alreadyCaughtPrehire": 0,
+      "problemsCaught": 1,
+      "amountPaidUsdOnCaught": 999.83,
+      "ids": [
+        "E42"
+      ]
+    },
+    {
+      "id": "scope",
+      "title": "Scope gate",
+      "catches": [
+        "scope_creep_or_upsell",
+        "invoice_line_not_in_scope",
+        "billed_unverified_quantity"
+      ],
+      "engagementsCaught": 0,
+      "alreadyCaughtPrehire": 0,
+      "problemsCaught": 0,
+      "amountPaidUsdOnCaught": 0,
+      "ids": []
+    },
+    {
+      "id": "visit",
+      "title": "Visit gate",
+      "catches": [
+        "no_show",
+        "late_or_missed_window"
+      ],
+      "engagementsCaught": 4,
+      "alreadyCaughtPrehire": 0,
+      "problemsCaught": 4,
+      "amountPaidUsdOnCaught": 1723.78,
+      "ids": [
+        "E42",
+        "E81",
+        "E103",
+        "E125"
+      ]
+    },
+    {
+      "id": "proof",
+      "title": "Proof-before-payment gate",
+      "catches": [
+        "work_incomplete",
+        "work_defective",
+        "claimed_done_before_proof",
+        "paid_before_proof"
+      ],
+      "engagementsCaught": 3,
+      "alreadyCaughtPrehire": 0,
+      "problemsCaught": 9,
+      "amountPaidUsdOnCaught": 1219.83,
+      "ids": [
+        "E42",
+        "E81",
+        "E104"
+      ]
+    }
+  ],
+  "notCaught": [
+    {
+      "id": "E104",
+      "trade": "appliance install",
+      "problem": "slow_or_phone_only_comm",
+      "reason": "communication speed and channel are outside the gates"
+    },
+    {
+      "id": "E125",
+      "trade": "electrical",
+      "problem": "other",
+      "reason": "not classified; reviewed by hand"
+    },
+    {
+      "id": "E125",
+      "trade": "electrical",
+      "problem": "slow_or_phone_only_comm",
+      "reason": "communication speed and channel are outside the gates"
+    }
+  ],
+  "problemCounts": [
+    {
+      "problem": "no_license",
+      "count": 1,
+      "gate": "license"
+    },
+    {
+      "problem": "late_or_missed_window",
+      "count": 4,
+      "gate": "visit"
+    },
+    {
+      "problem": "work_incomplete",
+      "count": 2,
+      "gate": "proof"
+    },
+    {
+      "problem": "work_defective",
+      "count": 2,
+      "gate": "proof"
+    },
+    {
+      "problem": "refund_refused",
+      "count": 1,
+      "gate": "proof"
+    },
+    {
+      "problem": "slow_or_phone_only_comm",
+      "count": 2,
+      "gate": null
+    },
+    {
+      "problem": "claimed_done_before_proof",
+      "count": 2,
+      "gate": "proof"
+    },
+    {
+      "problem": "paid_before_proof",
+      "count": 2,
+      "gate": "proof"
+    },
+    {
+      "problem": "other",
+      "count": 1,
+      "gate": null
+    }
+  ]
+}

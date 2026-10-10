@@ -40,6 +40,8 @@ export const engagementSchema = z.strictObject({
   amount_quoted_usd: z.number().nonnegative().nullable(),
   amount_paid_usd: z.number().nonnegative().nullable(),
   month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "YYYY-MM"),
+  vendor: z.string().regex(/^V\d{3}$/, "anonymized vendor key, e.g. V007").optional(), // same key = same company
+  since_closing: z.boolean().optional(), // first contact after the house closed
 });
 export type Engagement = z.infer<typeof engagementSchema>;
 
@@ -102,6 +104,8 @@ export function classify(problem: Problem, row: Engagement): Verdict {
 // ---------- run ----------
 export interface BacktestResult {
   totals: { engagements: number; hired: number; wentWrong: number; wentWrongCaught: number; wentWrongFullyCaught: number; wentWrongNotCaught: number };
+  window: null | { companiesSinceClosing: number | null; engagementsSinceClosing: number; hiredSinceClosing: number; wentWrongSinceClosing: number; wentWrongCaughtSinceClosing: number };
+  prehire: { licenseCaught: number; ids: string[] };
   gates: Array<{ id: GateId; title: string; catches: readonly Problem[]; engagementsCaught: number; alreadyCaughtPrehire: number; problemsCaught: number; amountPaidUsdOnCaught: number; ids: string[] }>;
   notCaught: Array<{ id: string; trade: string; problem: Problem; reason: string }>;
   problemCounts: Array<{ problem: Problem; count: number; gate: GateId | null }>;
@@ -131,7 +135,19 @@ export function runBacktest(input: Engagement[]): BacktestResult {
   });
   const counts = new Map<Problem, number>();
   for (const x of wrong) for (const v of x.verdicts) counts.set(v.problem, (counts.get(v.problem) ?? 0) + 1);
+  const hasWindow = input.some((r) => r.since_closing !== undefined);
+  const since = rows.filter((x) => x.row.since_closing === true);
+  const vendors = since.map((x) => x.row.vendor).filter((v): v is string => !!v);
+  const licensePre = rows.filter((x) => !x.row.hired && x.row.caught_prehire && x.row.problems.some((p) => p === "no_license" || p === "license_mismatch"));
   return {
+    window: hasWindow ? {
+      companiesSinceClosing: vendors.length === since.length && since.length > 0 ? new Set(vendors).size : null,
+      engagementsSinceClosing: since.length,
+      hiredSinceClosing: since.filter((x) => x.row.hired).length,
+      wentWrongSinceClosing: since.filter((x) => x.row.went_wrong).length,
+      wentWrongCaughtSinceClosing: since.filter((x) => x.row.went_wrong && caughtAny(x.verdicts)).length,
+    } : null,
+    prehire: { licenseCaught: licensePre.length, ids: licensePre.map((x) => x.row.id) },
     totals: {
       engagements: rows.length,
       hired: rows.filter((x) => x.row.hired).length,
@@ -174,6 +190,19 @@ export function renderMarkdown(result: BacktestResult, meta: InputMeta): string 
   out.push("| Engagements | Hired | Went wrong | Went wrong, caught by at least one gate | Went wrong, every problem caught | Went wrong, nothing caught |");
   out.push("|---:|---:|---:|---:|---:|---:|");
   out.push(`| ${t.engagements} | ${t.hired} | ${t.wentWrong} | ${t.wentWrongCaught} (${pct(t.wentWrongCaught, t.wentWrong)}) | ${t.wentWrongFullyCaught} (${pct(t.wentWrongFullyCaught, t.wentWrong)}) | ${t.wentWrongNotCaught} (${pct(t.wentWrongNotCaught, t.wentWrong)}) |`);
+  out.push("");
+  if (result.window) {
+    const w = result.window;
+    out.push("## Since the house closed");
+    out.push("");
+    out.push("| Companies contacted | Engagements (company × job) | Jobs booked or paid | Went wrong | Went wrong, caught by at least one gate |");
+    out.push("|---:|---:|---:|---:|---:|");
+    out.push(`| ${w.companiesSinceClosing ?? "n/a"} | ${w.engagementsSinceClosing} | ${w.hiredSinceClosing} | ${w.wentWrongSinceClosing} | ${w.wentWrongCaughtSinceClosing} (${pct(w.wentWrongCaughtSinceClosing, w.wentWrongSinceClosing)}) |`);
+    out.push("");
+  }
+  out.push("## Before hiring");
+  out.push("");
+  out.push(`The homeowner already ruled out ${result.prehire.licenseCaught} pro(s) because no active license was found in the state registry (${result.prehire.ids.join(", ") || "none"}). The license gate does this check automatically for every pro it offers.`);
   out.push("");
   out.push("## Per gate");
   out.push("");
