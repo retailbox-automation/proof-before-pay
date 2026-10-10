@@ -199,7 +199,7 @@ export async function runBrowserChecks(opts: { hostUrl: string; simBase: string;
     await page.waitForFunction(() => /Nov 12/.test(document.getElementById("clock")?.textContent ?? ""));
     await page.click("#new-session");
     await page.waitForSelector("body[data-connected='3']");
-    const t6a = await say("The master bath fan stopped working again.");
+    const t6a = await say("The master bath outlet stopped working again.");
     await cardReady("warranty", 7);
     const w6 = (await view().locator("#rows .row").allInnerTexts()).map((x) => x.replace(/\s+/g, " "));
     const t6b = await say("Yes, book it.");

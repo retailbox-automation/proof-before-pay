@@ -25,6 +25,8 @@ export type Env = {
   RING_TOKEN: string; // bearer for the camera history API ("sandbox" against the simulator)
   CAMERA_MODE: SourceMode; // how camera facts are labelled: "simulated" against the sandbox simulator
   REGISTRY_MODE: "fixture" | "live" | "auto";
+  /** Opt-in (recording only): license numbers that always go to the live registry, even with a recorded page. */
+  REGISTRY_LIVE_NUMBERS: string[];
 };
 
 export function envFromProcess(e: NodeJS.ProcessEnv = process.env): Env {
@@ -40,6 +42,7 @@ export function envFromProcess(e: NodeJS.ProcessEnv = process.env): Env {
     RING_TOKEN: e.RING_TOKEN ?? "sandbox",
     CAMERA_MODE: (e.CAMERA_MODE as SourceMode | undefined) ?? "simulated",
     REGISTRY_MODE: mode,
+    REGISTRY_LIVE_NUMBERS: (e.REGISTRY_LIVE_NUMBERS ?? "").split(",").map((x) => x.trim().toUpperCase()).filter(Boolean),
   };
 }
 
@@ -216,7 +219,8 @@ export function createServices(env: Env = envFromProcess()): Services {
     },
 
     lookupLicense(licenseNumber, claimedName, now) {
-      return coreLookupLicense(licenseNumber, claimedName, { mode: env.REGISTRY_MODE, fixtures: regFixtures(), now: env.REGISTRY_MODE === "fixture" ? now : undefined });
+      const mode = (env.REGISTRY_LIVE_NUMBERS ?? []).includes(licenseNumber.toUpperCase()) ? "live" : env.REGISTRY_MODE;
+      return coreLookupLicense(licenseNumber, claimedName, { mode, fixtures: regFixtures(), now: mode === "fixture" ? now : undefined });
     },
 
     async createBooking(r) {

@@ -344,7 +344,7 @@ export async function runProtocolChecks(opts: { mcpUrl: string; simBase: string;
   // ---------- R: warranty, a month later (SPEC §7.5 beat 6) ----------
   const advW = await sim(simBase, "/advance", { to: "warranty" });
   const wr = await session(mcpUrl, userA);
-  const issue = "The master bath fan stopped working again.";
+  const issue = "The master bath outlet stopped working again.";
   const offer = track("warranty_callback", await call(wr.c, "warranty_callback", { issue }));
   const od = offer.sc.data ?? {};
   add("R1", "warranty_callback offer: SPEC line; 90-day labor warranty to Jan 13, 2027; $0.00 return visit Mon Nov 16 10-12; evidence scope + 2 photos + visit log", SPEC_LINES.warranty,

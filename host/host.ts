@@ -562,7 +562,7 @@ const BEATS: { beat: number; say?: string; action?: "simTime" | "simWarranty" | 
   { beat: 5, say: "Yes, draft it." },
   { beat: 6, action: "simWarranty" },
   { beat: 6, action: "newSession" },
-  { beat: 6, say: "The master bath fan stopped working again." },
+  { beat: 6, say: "The master bath outlet stopped working again." },
   { beat: 6, say: "Yes, book it." },
 ];
 

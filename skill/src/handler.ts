@@ -29,7 +29,7 @@ export const TEXT = {
 
 const DEFAULT_JOB = "replace outlets and smoke detectors in the master bath";
 /** The interaction model's warranty samples are about the bathroom outlet (no slot). */
-const WARRANTY_ISSUE = "The bathroom outlet stopped working again";
+const WARRANTY_ISSUE = "The master bath outlet stopped working again";
 const APL = "Alexa.Presentation.APL";
 
 type Pending =

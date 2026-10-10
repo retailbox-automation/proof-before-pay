@@ -219,6 +219,6 @@ export function warrantyCard(job: Job): CardModel {
     subtitle: `${job.proName} · "${w.issue}"`,
     rows: rows.slice(0, 5),
     footer: w.covered ? "Sandbox · the scope, photos and visit log go with the request." : "Sandbox",
-    action: w.covered && !w.booked ? { label: "Book return visit", message: "Yes, book it." } : undefined,
+    action: w.covered && !w.booked ? { label: "Book free visit", message: "Yes, book it." } : undefined,
   };
 }
