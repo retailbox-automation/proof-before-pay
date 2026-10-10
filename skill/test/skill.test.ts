@@ -85,7 +85,7 @@ test("beat 1 FindProsIntent -> find_pros: tool line spoken verbatim, pros list A
   assert.equal(rows[0].state, "ok");
   assert.match(rows[0].detail, /EC99000101/);
   assert.equal(rows[0].source, "Florida license registry");
-  assert.equal(rows[0].action, "Book");
+  assert.equal(rows[0].action, "Choose");
   const struck = rows.find((x: any) => x.label === "Quick Volt Pros");
   assert.equal(struck.state, "struck");
   assert.match(struck.detail, /EC99000103 not found/);
@@ -100,9 +100,10 @@ test("beat 2 BookIntent -> book_job read-back, ConfirmIntent -> booked", async (
   assert.match(speech(r), /Bright Current, Thursday 10 to noon/);
   assert.match(speech(r), /1,120 dollars/);
   assert.equal(apl(r).token, "pbp-card");
-  assert.match(apl(r).datasources.card.title, /Thu/);
+  assert.equal(apl(r).datasources.card.title, "Master bath electrical");
+  assert.match(apl(r).datasources.card.subtitle, /Thu, Oct 15/);
   assert.equal(apl(r).datasources.card.rows.length, 3);
-  assert.equal(apl(r).datasources.card.more, "+3 more");
+  assert.equal(apl(r).datasources.card.more, "+3 more items");
   assert.equal((attrs.pending as any)?.kind, "book");
 
   r = await say({ intent: "ConfirmIntent" });
@@ -131,8 +132,8 @@ test("simulated time -> camera webhooks; beat 3 ReviewInvoiceIntent -> payment A
   assert.equal(p.totalText, "$1,050.00");
   assert.equal(p.canPay, true);
   assert.equal(p.payLabel, "Pay $1,050");
-  assert.deepEqual(p.proven.map((x: any) => x.source), ["Florida license registry", "front door camera", "marketplace photos"]);
-  assert.match(p.proven[1].label, /^Visit 10:02–11:40$/);
+  assert.deepEqual(p.proven.map((x: any) => x.source), ["Florida license registry", "Front door camera", "Marketplace photos"]);
+  assert.match(p.proven[1].label, /^Visit Thu 10:02 – 11:40 AM$/);
   assert.equal(p.waiting.length, 2);
   assert.match(p.waiting[0].label, /hallway smoke detector/i);
   assert.match(p.waiting[1].label, /Electrical inspection/);

@@ -9,6 +9,9 @@
 // Run: node server/server.ts [--port 8787]
 import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from "node:http";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createMcpHandler, isLegacyRequest, type McpServer } from "@modelcontextprotocol/server";
 import { NodeStreamableHTTPServerTransport, localhostHostValidation, localhostOriginValidation, toNodeHandler, toWebRequest } from "@modelcontextprotocol/node";
 import { createServices, type Services } from "../src/app/services.ts";
@@ -17,6 +20,9 @@ import { dataDir } from "./store.ts";
 import { handleDoorbellWebhook, type WebhookStats } from "./webhook.ts";
 
 type AuthInfo = { token: string; clientId: string; scopes: string[]; extra: { userId: string } };
+// Inter (SIL OFL 1.1, @fontsource/inter, pinned) served to the cards; declared in each card's _meta.ui.csp.
+const FONT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "node_modules", "@fontsource", "inter", "files");
+const FONTS = new Set(["inter-latin-400-normal.woff2", "inter-latin-500-normal.woff2", "inter-latin-600-normal.woff2", "inter-latin-700-normal.woff2"]);
 const TOKEN = /^pbp-sandbox-([A-Za-z0-9_.-]{1,64})$/;
 
 function hostOrigins(): Set<string> {
@@ -71,7 +77,8 @@ export async function startMcpServer(opts: { port: number; quiet?: boolean; serv
   const validateOrigin = localhostOriginValidation();
   const webhooks: WebhookStats = { received: 0, rejected: 0, stored: 0, dropped: 0 };
   // 2026-07-28 leg: the SDK's per-request handler, strict (legacy traffic never reaches it).
-  const modern = createMcpHandler((ctx) => buildMcpServer({ era: ctx.era, services }), { legacy: "reject", onerror: (e) => log("modern leg error:", e.message) });
+  let assetBase = process.env.PUBLIC_BASE ?? ""; // set after listen when not given
+  const modern = createMcpHandler((ctx) => buildMcpServer({ era: ctx.era, services, assetBase }), { legacy: "reject", onerror: (e) => log("modern leg error:", e.message) });
   const modernNode = toNodeHandler(modern, { onerror: (e) => log("modern adapter error:", e.message) });
 
   const http: HttpServer = createServer(async (req, res) => {
@@ -83,6 +90,13 @@ export async function startMcpServer(opts: { port: number; quiet?: boolean; serv
         return;
       }
       if (url.pathname === "/webhooks/doorbell") { await handleDoorbellWebhook(req, res, services, webhooks, log); return; }
+      if (url.pathname.startsWith("/assets/fonts/")) {
+        const name = url.pathname.slice("/assets/fonts/".length);
+        if (!FONTS.has(name) || req.method !== "GET") { res.writeHead(404); res.end(); return; }
+        res.writeHead(200, { "Content-Type": "font/woff2", "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=86400" });
+        res.end(readFileSync(join(FONT_DIR, name)));
+        return;
+      }
       if (url.pathname !== "/mcp") { jsonRpcError(res, 404, "Not found"); return; }
       // DNS-rebinding guards (spec: servers MUST validate Origin). They answer 403 themselves.
       if (!validateHost(req, res) || !validateOrigin(req, res)) return;
@@ -114,7 +128,7 @@ export async function startMcpServer(opts: { port: number; quiet?: boolean; serv
           await s.transport.handleRequest(req, res, body);
           return;
         }
-        const server = buildMcpServer({ era: "legacy", services });
+        const server = buildMcpServer({ era: "legacy", services, assetBase });
         const transport = new NodeStreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (id) => {
@@ -156,6 +170,7 @@ export async function startMcpServer(opts: { port: number; quiet?: boolean; serv
   });
   const addr = http.address();
   const port = typeof addr === "object" && addr ? addr.port : opts.port;
+  if (!assetBase) assetBase = `http://127.0.0.1:${port}`;
   log(`proofpay MCP on http://127.0.0.1:${port}/mcp (2025-11-25 strict sessions + 2026-07-28; registry=${services.registryMode}; data=${dataDir()})`);
 
   return {

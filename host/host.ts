@@ -215,7 +215,9 @@ async function renderCard(toolName: string, args: Record<string, unknown>, uri: 
     };
     window.addEventListener("message", onMsg);
   });
-  iframe.src = CFG.sandboxProxyUrl;
+  // Honour the card's declared CSP (MCP Apps _meta.ui.csp): the proxy serves the matching CSP header.
+  const csp = ((content as { _meta?: { ui?: { csp?: { resourceDomains?: string[]; connectDomains?: string[] } } } })._meta?.ui?.csp) ?? {};
+  iframe.src = `${CFG.sandboxProxyUrl}?csp=${encodeURIComponent(JSON.stringify({ resourceDomains: csp.resourceDomains ?? [], connectDomains: csp.connectDomains ?? [] }))}`;
   $("card").append(iframe);
   await proxyReady;
 

@@ -7,6 +7,45 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { BEAT_1_4, SPEC_LINES, TOOL_OR_ID, type Row } from "./protocol.ts";
 
+/** Runs inside a page or frame: fit, local font, DOM checks (clipped text, wrapped amounts) and mark rules.
+ *  Allowed SVG: data-mark product (our shield), status (✓ ! ○ icons), icon (generic: star, card, doc, calendar, wave).
+ *  Rejected: <img>, unlabelled SVG, brand words in titles/labels, ring-like marks (a stroked circle in a saturated blue/cyan). */
+export const MARKS_AND_FIT = (rootEl?: Element | HTMLElement) => {
+  const root = (rootEl as HTMLElement) ?? document.body;
+  const bad: string[] = [];
+  root.querySelectorAll("img").forEach(() => bad.push("img"));
+  const svgs = [...root.querySelectorAll("svg")];
+  for (const s of svgs) {
+    const mark = s.getAttribute("data-mark");
+    if (!["product", "status", "icon"].includes(mark ?? "")) bad.push(`svg:${s.getAttribute("class") ?? "?"}`);
+    const words = `${s.getAttribute("aria-label") ?? ""} ${s.querySelector("title")?.textContent ?? ""}`;
+    if (/alexa|echo|amazon|ring|visa|mastercard|amex/i.test(words)) bad.push(`brand:${words.trim()}`);
+    for (const c of s.querySelectorAll("circle")) {
+      const cs = getComputedStyle(c);
+      if (cs.fill === "none" && cs.stroke !== "none") {
+        const m = cs.stroke.match(/\d+(\.\d+)?/g)?.map(Number) ?? [0, 0, 0];
+        const [r, g, b] = m; const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+        const sat = mx ? (mx - mn) / mx : 0;
+        if (sat > 0.45 && b >= r && (b > 150 || g > 150) && r < 120) bad.push("ring-like");
+      }
+    }
+  }
+  const clipped: string[] = [];
+  const wrappedNumbers: string[] = [];
+  for (const e of root.querySelectorAll("*")) {
+    const he = e as HTMLElement;
+    if (!he.childElementCount && he.textContent?.trim() && he.scrollWidth > he.clientWidth + 1 && getComputedStyle(he).overflow !== "visible") clipped.push(he.textContent.trim().slice(0, 30));
+    if (!he.childElementCount && /\$\d/.test(he.textContent ?? "") && he.getClientRects().length > 0) {
+      const r = document.createRange(); r.selectNodeContents(he);
+      const lines = new Set([...r.getClientRects()].map((x) => Math.round(x.top)));
+      const money = (he.textContent ?? "").match(/\$[\d,]+(\.\d\d)?/g) ?? [];
+      if (lines.size > 1 && money.some((m) => m.length > 0) && (he.textContent ?? "").trim().length < 40) wrappedNumbers.push(he.textContent!.trim().slice(0, 30));
+    }
+  }
+  const b = document.body;
+  return { zoom: Number(b.dataset.zoom), overflow: document.documentElement.scrollHeight - innerHeight, vh: innerHeight, bad, svgs: svgs.length, inter: document.fonts ? document.fonts.check("16px Inter") : false, clipped, wrappedNumbers };
+};
+
 // Plain-text "Alexa+" / "Echo Show" are allowed (SPEC §7.4); third-party brand names are not.
 const BRAND = /\b(ring|amazon|echo dot|thumbtack|angi|homeadvisor|dbpr|myfloridalicense)\b/i;
 
@@ -26,10 +65,14 @@ export async function runBrowserChecks(opts: { hostUrl: string; simBase: string;
   const fits: string[] = [];
   const shots: string[] = [];
   const mcpBodies: { method: string; tool: string | null; body: string; t: number }[] = [];
+  const fontReqs: { url: string; status: number }[] = [];
+  const remoteFont: string[] = [];
   try {
     const page = await browser.newPage({ viewport: { width: 1760, height: 1150 } });
     page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text().slice(0, 200)); });
     page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${String(e).slice(0, 200)}`));
+    page.on("response", (r) => { if (/\.woff2(\?|$)/.test(r.url())) fontReqs.push({ url: r.url(), status: r.status() }); });
+    page.on("request", (r) => { if (/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(r.url())) remoteFont.push(r.url()); });
     page.on("request", (r) => {
       if (!r.url().startsWith(opts.mcpUrl)) return;
       const body = r.postData() ?? "";
@@ -54,8 +97,9 @@ export async function runBrowserChecks(opts: { hostUrl: string; simBase: string;
       await page.waitForSelector(`#card iframe[data-rendered='${renders}'][data-view='${viewName}']`);
       await view().locator(`#card[data-view='${viewName}']`).waitFor();
       cardTexts.push(`${viewName}: ${await view().locator("#card").innerText()}`);
-      const f = await view().locator("body").evaluate((b) => ({ zoom: Number(b.dataset.zoom), overflow: document.documentElement.scrollHeight - innerHeight, vh: innerHeight, marks: document.querySelectorAll("img, svg").length }));
-      fits.push(`${viewName}@${f.zoom}:${f.vh}px${f.overflow > 1 || f.vh > 590 ? `!overflow=${f.overflow}` : ""}${f.marks ? `!marks=${f.marks}` : ""}`);
+      await view().locator("body").evaluate(() => document.fonts.ready);
+      const f = await view().locator("body").evaluate(MARKS_AND_FIT);
+      fits.push(`${viewName}@${f.zoom}:${f.vh}px${f.overflow > 1 || f.vh > 590 ? `!overflow=${f.overflow}` : ""}${f.bad.length ? `!marks=${f.bad.join("/")}` : ""}${f.inter ? "" : "!font"}${f.clipped.length ? `!clipped=${f.clipped.join("/")}` : ""}${f.wrappedNumbers.length ? `!wrapped=${f.wrappedNumbers.join("/")}` : ""}`);
     }
     async function shot(name: string): Promise<void> {
       const p = join(opts.screensDir, `${name}.png`);
@@ -76,11 +120,13 @@ export async function runBrowserChecks(opts: { hostUrl: string; simBase: string;
     const struckText = (await rowsOf("struck").allInnerTexts()).join(" | ");
     const okRows = await rowsOf("ok").count();
     const p1 = (await rowsOf("ok").first().innerText()).replace(/\s+/g, " ");
-    const badges = await view().locator("#rows .badge").allInnerTexts();
+    const badges = await view().locator(".badge").count();
+    const footer1 = await view().locator("#footer").innerText();
     await shot("beat-1");
-    add("B2", "beat 1: find_pros line + pros card (unlicensed pro struck 'not found'; license rows with source + badge)", `SPEC line; 2 ok rows; 1 struck "not found"; FIXTURE badges`,
-      `line ${t1.speech === SPEC_LINES.find ? "=" : "≠"} SPEC (${t1.seconds}s) | ok=${okRows} struck="${struckText.replace(/\s+/g, " ").slice(0, 80)}" | P1="${p1.slice(0, 60)}" | badges=${[...new Set(badges)].join(",")}`,
-      t1.speech === SPEC_LINES.find && okRows === 2 && (await rowsOf("struck").count()) === 1 && /Quick Volt Pros/.test(struckText) && /not found/.test(struckText) && /License EC99000101/.test(p1) && badges.length >= 3 && badges.every((b) => b === "FIXTURE"));
+    add("B2", "beat 1: find_pros line + pros card (verified rows; the unlicensed pro 'Left out · not found'; source line; no mode badges)", `SPEC line; 2 verified; 1 left out; source footer; 0 badges`,
+      `line ${t1.speech === SPEC_LINES.find ? "=" : "≠"} SPEC (${t1.seconds}s) | ok=${okRows} struck="${struckText.replace(/\s+/g, " ").slice(0, 80)}" | P1="${p1.slice(0, 70)}" | "${footer1}" | badges on card=${badges}`,
+      t1.speech === SPEC_LINES.find && okRows === 2 && (await rowsOf("struck").count()) === 1 && /Quick Volt Pros/.test(struckText) && /Left out/.test(struckText) && /not found/.test(struckText) &&
+      /License EC99000101/.test(p1) && /Verified/.test(p1) && /\$1,120 estimate/.test(p1) && /^Source: Florida license registry/.test(footer1) && badges === 0);
     const chipBadges = await page.locator("#devview .chip[data-tool='tools/call proofpay.find_pros'] .step .badge").allInnerTexts();
     const chipText = await page.locator("#devview .chip[data-tool='tools/call proofpay.find_pros']").innerText();
     add("B3", "developer view: one chip per tools/call, one sub-chip per step, mode badges, SPI pattern labelled", "4 steps (SANDBOX + 3 FIXTURE), 'Browse-and-Choose'",
@@ -92,18 +138,22 @@ export async function runBrowserChecks(opts: { hostUrl: string; simBase: string;
     const t2b = await say("Yes.");
     await cardReady("scope", 3);
     const title2 = await view().locator("#title").innerText();
+    const tag2 = await view().locator("#tag").innerText();
     const sub2 = await view().locator("#subtitle").innerText();
-    const items2 = await view().locator("#rows .row").count();
+    const items2 = await view().locator("#items .item").count();
     const more2 = await view().locator("#more").innerText();
-    const consent2 = await view().locator(".field[data-kind='consent']").innerText();
-    const door2 = await view().locator(".field[data-kind='door']").innerText();
-    const cancel2 = await view().locator(".field[data-kind='cancellation']").innerText();
+    const total2 = await view().locator("#total").innerText();
+    const proof2 = await view().locator(".row[data-kind='proof']").innerText();
+    const consent2 = await view().locator(".row[data-kind='consent']").innerText();
+    const door2 = await view().locator(".row[data-kind='door']").innerText();
+    const cancel2 = await view().locator(".section-note[data-kind='cancellation']").innerText();
     const action2 = await view().locator("#action").innerText();
     await shot("beat-2");
-    add("B4", "beat 2: read-back, 'Yes', booked scope card (3 rows +3 more, consent, simulated door code, cancellation policy, Cancel)", "SPEC lines; to be paid after the work is proven; no booking id",
-      `${t2a.speech === SPEC_LINES.readBack ? "=" : "≠"}/${t2b.speech === SPEC_LINES.booked ? "=" : "≠"} SPEC | "${title2}" | "${sub2}" | rows=${items2} "${more2}" | ${consent2.replace(/\s+/g, " ").slice(0, 60)} | ${door2.replace(/\s+/g, " ").slice(0, 50)} | ${cancel2.replace(/\s+/g, " ").slice(0, 50)} | [${action2}]`,
-      t2a.speech === SPEC_LINES.readBack && t2b.speech === SPEC_LINES.booked && title2 === "Master bath electrical · Thu 10–12" && /to be paid after the work is proven/.test(sub2) && !/PB-\d/.test(sub2) && items2 === 3 && more2 === "+3 more" &&
-      /pro agreed ✓/.test(consent2) && /simulated \(no lock API\)/.test(door2) && /Free cancellation up to 24 hours/.test(cancel2) && action2 === "Cancel booking");
+    add("B4", "beat 2: read-back, 'Yes', booked scope card (3 items +3 more, total, proof, consent, simulated door code, cancellation policy, Cancel)", "SPEC lines; sandbox booking; no booking id",
+      `${t2a.speech === SPEC_LINES.readBack ? "=" : "≠"}/${t2b.speech === SPEC_LINES.booked ? "=" : "≠"} SPEC | "${title2}" [${tag2}] | "${sub2}" | items=${items2} "${more2}" "${total2}" | ${consent2.replace(/\s+/g, " ").slice(0, 50)} | ${door2.replace(/\s+/g, " ").slice(0, 60)} | ${cancel2.slice(0, 50)} | [${action2}]`,
+      t2a.speech === SPEC_LINES.readBack && t2b.speech === SPEC_LINES.booked && title2 === "Master bath electrical" && tag2 === "sandbox booking" && sub2 === "Bright Current Electric · Thu, Oct 15 · 10:00 AM – 12:00 PM" &&
+      items2 === 3 && more2 === "+3 more items" && total2 === "6 items · $1,120.00" && /to be paid after the work is proven/.test(proof2) && /agreed/.test(consent2) && /no video kept/.test(consent2) &&
+      /simulated \(no lock API\)/i.test(door2) && /Free cancellation up to 24 hours/.test(cancel2) && action2 === "Cancel booking" && !/PB-\d/.test(`${title2} ${sub2}`));
 
     // ---- simulated time ----
     await page.click("#sim-time");
@@ -117,23 +167,24 @@ export async function runBrowserChecks(opts: { hostUrl: string; simBase: string;
     // ---- beat 3: the pre-checkout card ----
     const t3 = await say("He sent the invoice. Pay him.");
     await cardReady("payment", 4);
-    const hero3 = await view().locator("#hero").innerText();
-    const stacks3 = (await view().locator("#stacks .stack").allInnerTexts()).map((x) => x.replace(/\s+/g, " "));
-    const bad3 = await view().locator("#rows .row[data-state='bad']").allInnerTexts();
-    const allRows3 = await view().locator("#rows .row").count();
-    const sourced3 = await view().locator("#rows .row .src .badge").count();
+    const pay3 = await view().locator("#panel-pay .amt").innerText();
+    const wait3 = await view().locator("#panel-wait .amt").innerText();
+    const okIn3 = await view().locator("#panel-pay .row[data-state='ok']").count();
+    const bad3 = await view().locator("#panel-wait .row[data-state='bad']").allInnerTexts();
+    const allRows3 = await view().locator("#panels .row").count();
+    const sourced3 = await view().locator("#panels .row .src").count();
     const breakdown3 = (await view().locator("#breakdown .line").allInnerTexts()).map((x) => x.replace(/\s+/g, " "));
     const action3 = await view().locator("#action").innerText();
     const msg3 = await view().locator("#action").getAttribute("data-message");
     const text3 = await view().locator("#card").innerText();
     await shot("beat-3");
-    add("B6", "beat 3: pre-checkout card: two stacks, evidence rows with sources, Subtotal/Fees/Total, 'Pay $1,050.00'", `"Pay now $1,050.00 · Waits $370.00"; 2 not-confirmed rows; $1,050.00 / $0.00 / $1,050.00`,
-      `${t3.speech === SPEC_LINES.review ? "=" : "≠"} SPEC | "${hero3}" | ${stacks3.join(" / ")} | bad=${bad3.length} | rows=${allRows3} sourced=${sourced3} | ${breakdown3.join(", ")} | [${action3}]`,
-      t3.speech === SPEC_LINES.review && hero3 === "Pay now $1,050.00 · Waits $370.00" && stacks3.length === 2 && /\$1,050\.00/.test(stacks3[0]) && /\$370\.00/.test(stacks3[1]) && bad3.length === 2 &&
-      /hallway smoke detector/.test(bad3.join(" ")) && /Electrical inspection/.test(bad3.join(" ")) && sourced3 === allRows3 && allRows3 <= 5 &&
+    add("B6", "beat 3: pre-checkout card: Pay now / Waits stacks, evidence rows with sources, Subtotal/Fees/Total under Pay now, 'Pay $1,050.00'", `$1,050.00 / $370.00; 3 proven + 2 not-confirmed rows; breakdown; button`,
+      `${t3.speech === SPEC_LINES.review ? "=" : "≠"} SPEC | pay ${pay3} · waits ${wait3} | ok=${okIn3} bad=${bad3.length} | rows=${allRows3} sourced=${sourced3} | ${breakdown3.join(", ")} | [${action3}]`,
+      t3.speech === SPEC_LINES.review && pay3 === "$1,050.00" && wait3 === "$370.00" && okIn3 === 3 && bad3.length === 2 &&
+      /hallway smoke detector/.test(bad3.join(" ")) && /\$70\.00/.test(bad3.join(" ")) && /Electrical inspection/.test(bad3.join(" ")) && /\$300\.00/.test(bad3.join(" ")) && sourced3 === allRows3 &&
       breakdown3.join("|") === "Subtotal $1,050.00|Fees $0.00|Total $1,050.00" && action3 === "Pay $1,050.00");
-    add("B7", "payment wording: never 'hold' or 'escrow'; sandbox label; the button sends ui/message 'Pay for this order'", "no hold/escrow; Sandbox; data-message", `hold=${/\bhold\b|escrow/i.test(text3)} sandbox=${/Sandbox/.test(text3)} message="${msg3}"`,
-      !/\bhold\b|escrow/i.test(text3) && /Sandbox/.test(text3) && msg3 === "Pay for this order");
+    add("B7", "payment wording: never 'hold' or 'escrow'; sandbox tag; SPEC §5 wording; the button sends ui/message 'Pay for this order'", "no hold/escrow; sandbox; data-message", `hold=${/\bhold\b|escrow/i.test(text3)} sandbox=${/\bsandbox\b/i.test(text3)} wording=${/Pay proven items now, the rest after you confirm/.test(text3)} message="${msg3}"`,
+      !/\bhold\b|escrow/i.test(text3) && /\bsandbox\b/i.test(text3) && /Pay proven items now, the rest after you confirm/.test(text3) && msg3 === "Pay for this order");
 
     // ---- beat 4: tap the card CTA -> Alexa+ checkout (simulated) drawn by the host ----
     const n4 = await turns();
@@ -183,7 +234,8 @@ export async function runBrowserChecks(opts: { hostUrl: string; simBase: string;
     const sidAfter = (await host()).sessionId;
     const t5a = await say("What's left with the electrician?");
     await cardReady("status", 5);
-    const paid5 = await view().locator("#rows .row[data-kind='paid']").innerText();
+    const paid5 = (await view().locator(".tile[data-kind='paid']").innerText()).replace(/\s+/g, " ");
+    const waiting5 = (await view().locator(".tile[data-kind='waiting']").innerText()).replace(/\s+/g, " ");
     const open5 = await view().locator("#rows .row[data-state='bad']").count();
     const t5b = await say("Yes, draft it.");
     await cardReady("draft", 6);
@@ -191,8 +243,8 @@ export async function runBrowserChecks(opts: { hostUrl: string; simBase: string;
     const footer5 = await view().locator("#footer").innerText();
     await shot("beat-5");
     add("B11", "beat 5: New session, status from saved state (paid through Alexa+ checkout), draft note the homeowner sends", "new sid; SPEC line; Paid $1,050.00; 2 open; 'never sends'",
-      `sid ${String(sidBefore).slice(0, 8)}…->${String(sidAfter).slice(0, 8)}… | ${t5a.speech === SPEC_LINES.status ? "=" : "≠"} SPEC | ${paid5.split("\n")[1]} | open=${open5} | "${footer5}"`,
-      sidAfter !== sidBefore && t5a.speech === SPEC_LINES.status && /Paid \$1,050\.00/.test(paid5) && open5 === 2 && t5b.tool === "draft_note" && /hallway smoke detector/i.test(note5) && /never sends/.test(footer5));
+      `sid ${String(sidBefore).slice(0, 8)}…->${String(sidAfter).slice(0, 8)}… | ${t5a.speech === SPEC_LINES.status ? "=" : "≠"} SPEC | ${paid5} / ${waiting5} | open=${open5} | "${footer5}"`,
+      sidAfter !== sidBefore && t5a.speech === SPEC_LINES.status && paid5 === "Paid $1,050.00" && waiting5 === "Waiting $370.00" && open5 === 2 && t5b.tool === "draft_note" && /hallway smoke detector/i.test(note5) && /never sends/.test(footer5));
 
     // ---- beat 6: a month later, warranty ----
     await page.click("#sim-warranty");
@@ -202,14 +254,15 @@ export async function runBrowserChecks(opts: { hostUrl: string; simBase: string;
     const t6a = await say("The master bath outlet stopped working again.");
     await cardReady("warranty", 7);
     const w6 = (await view().locator("#rows .row").allInnerTexts()).map((x) => x.replace(/\s+/g, " "));
+    const act6 = await view().locator("#action").innerText();
     const t6b = await say("Yes, book it.");
     await cardReady("warranty", 8);
     const w6b = (await view().locator("#rows .row").allInnerTexts()).map((x) => x.replace(/\s+/g, " "));
     await shot("beat-6");
-    add("B12", "beat 6: warranty offer (SPEC line) and a $0.00 return visit; card shows coverage, visit, scope, 2 photos, visit log", "covered to Jan 13, 2027; Mon, Nov 16, 10:00 AM–12:00 PM $0.00; 2 photos; visit log",
-      `${t6a.speech === SPEC_LINES.warranty ? "=" : "≠"} SPEC | ${w6.map((x) => x.slice(0, 48)).join(" / ")} | after yes: ${/booked/.test(w6b[1] ?? "") ? "booked" : "?"} | "${t6b.speech.slice(0, 60)}"`,
-      t6a.speech === SPEC_LINES.warranty && w6.length === 5 && /Covered: 90-day labor warranty/.test(w6[0]) && /Jan 13, 2027/.test(w6[0]) && /Return visit Mon, Nov 16, 10:00 AM–12:00 PM/.test(w6[1]) && /\$0\.00/.test(w6[1]) &&
-      /Original scope: 6 items/.test(w6[2]) && /2 photos/.test(w6[3]) && /Visit log Oct 15, 10:02–11:40/.test(w6[4]) && /booked/.test(w6b[1] ?? "") && t6b.tool === "warranty_callback" && (await charges()).length === ch4.length);
+    add("B12", "beat 6: warranty offer (SPEC line) and a $0.00 return visit; card: coverage, evidence (scope + 2 photos + visit log), return visit + 'Book free visit'", "covered to Jan 13, 2027; Mon, Nov 16 · 10:00 AM – 12:00 PM $0.00; booked after yes",
+      `${t6a.speech === SPEC_LINES.warranty ? "=" : "≠"} SPEC | ${w6.map((x) => x.slice(0, 52)).join(" / ")} | [${act6}] | after yes: ${w6b[2]?.slice(0, 70)}`,
+      t6a.speech === SPEC_LINES.warranty && w6.length === 3 && /Covered: Install 2 GFCI outlets in master bath/.test(w6[0]) && /Jan 13, 2027/.test(w6[0]) && /Evidence attached Scope, 2 photos, visit log Oct 15/.test(w6[1]) &&
+      /Return visit: Mon, Nov 16 · 10:00 AM – 12:00 PM/.test(w6[2]) && /\$0\.00/.test(w6[2]) && act6 === "Book free visit" && /booked/.test(w6b[2] ?? "") && t6b.tool === "warranty_callback" && (await charges()).length === ch4.length);
 
     // ---- cross-cutting: customer surface vs developer view ----
     const dev = await page.evaluate(() => {
@@ -218,7 +271,7 @@ export async function runBrowserChecks(opts: { hostUrl: string; simBase: string;
       return {
         title: document.getElementById("devview-title")?.textContent, chipsInDev: devview.querySelectorAll(".chip").length, chipsInDevice: device.querySelectorAll(".chip, .badge").length,
         separate: !device.contains(devview) && !devview.contains(device), deviceText: device.innerText, sessionId: (window as any).__host.sessionId,
-        frameLabel: document.getElementById("frame-label")?.textContent, marks: device.querySelectorAll("img, svg").length,
+        frameLabel: document.getElementById("frame-label")?.textContent,
       };
     });
     const deviceLeak = dev.deviceText.match(TOOL_OR_ID)?.[0] ?? (dev.deviceText.includes(dev.sessionId) ? "session id" : null);
@@ -235,10 +288,14 @@ export async function runBrowserChecks(opts: { hostUrl: string; simBase: string;
       `${budget.toFixed(1)} s over ${b14.length} lines (${b14.map((t) => t.seconds).join(" + ")})`, b14.length === 6 && budget <= 45);
     add("B15b", "every Alexa line ≤ 20 s", "≤ 20 s", `longest ${Math.max(...turnsAll.map((t) => t.seconds))} s over ${turnsAll.length} lines`, Math.max(...turnsAll.map((t) => t.seconds)) <= 20);
     const brandHits = cardTexts.filter((t) => BRAND.test(t)).map((t) => `${t.split(":")[0]}:${t.match(BRAND)?.[0]}`).concat(BRAND.test(dev.deviceText) ? [`device:${dev.deviceText.match(BRAND)?.[0]}`] : []);
-    add("B16", "no logos or marks; no third-party brand names on the customer surface; frame labelled", "0 img/svg, 0 brand hits, 'Echo Show 8 simulator (1280×800 frame)'",
-      `marks device=${dev.marks} cards=${fits.filter((f) => f.includes("!marks")).length} · brand ${brandHits.length ? brandHits.join(",") : "0"} · label "${dev.frameLabel}"`,
-      dev.marks === 0 && !fits.some((f) => f.includes("!marks")) && brandHits.length === 0 && dev.frameLabel === "Echo Show 8 simulator (1280×800 frame)");
-    add("B17", "every card fits the display container", "no vertical overflow inside the card frame; frame ≤ 590 px", fits.join(" "), fits.length === 8 && fits.every((x) => !x.includes("!overflow")));
+    const deviceMarks = await page.evaluate(`(${MARKS_AND_FIT.toString()})(document.getElementById("device"))`) as { bad: string[]; svgs: number };
+    add("B16", "no third-party logos or marks: only our shield, status icons and generic icons; no ring-like marks; no brand names; frame labelled", "0 violations; 'Echo Show 8 simulator (1280×800 frame)'",
+      `cards: ${fits.filter((f) => f.includes("!marks")).length} with violations · device: ${deviceMarks.svgs} svg, violations ${deviceMarks.bad.join("/") || "0"} · brand ${brandHits.length ? brandHits.join(",") : "0"} · label "${dev.frameLabel}"`,
+      !fits.some((f) => f.includes("!marks")) && deviceMarks.bad.length === 0 && brandHits.length === 0 && dev.frameLabel === "Echo Show 8 simulator (1280×800 frame)");
+    add("B17", "every card fits the display: no overflow, no clipped text, no wrapped amounts", "0 overflow / clipped / wrapped numbers in 8 cards", fits.join(" "), fits.length === 8 && fits.every((x) => !/!overflow|!clipped|!wrapped/.test(x)));
+    add("B21", "Inter is local: loaded in every card from the proofpay server (declared in _meta.ui.csp); no Google Fonts requests", "8 cards Inter; woff2 200 from the MCP origin; 0 remote",
+      `cards with Inter ${fits.filter((f) => !f.includes("!font")).length}/${fits.length} · woff2 ${fontReqs.length} (${[...new Set(fontReqs.map((f) => `${new URL(f.url).origin} ${f.status}`))].join(", ")}) · google ${remoteFont.length}`,
+      fits.length === 8 && fits.every((f) => !f.includes("!font")) && fontReqs.length > 0 && fontReqs.every((f) => f.status === 200 && f.url.startsWith(new URL(opts.mcpUrl).origin)) && remoteFont.length === 0);
     const iso = await page.evaluate(() => {
       const f = document.querySelector("#card iframe") as HTMLIFrameElement;
       let reachable = true;

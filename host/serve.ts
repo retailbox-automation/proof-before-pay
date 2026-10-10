@@ -9,19 +9,32 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-// The card resources declare no ui.csp, so the spec's restrictive default applies to the View
-// (inner iframe inherits this document's policy via document.write), plus frame/object/base rules.
-const SANDBOX_CSP = [
-  "default-src 'none'",
-  "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
-  "media-src 'self' data:",
-  "connect-src 'none'",
-  "frame-src 'none'",
-  "object-src 'none'",
-  "base-uri 'self'",
-].join("; ");
+// CSP for the View (the inner iframe inherits this document's policy via document.write). Restrictive default,
+// widened only by the origins the card declares in _meta.ui.csp (passed by the host as ?csp=...), validated here.
+const ORIGIN = /^https?:\/\/[a-z0-9.-]+(:\d{1,5})?$/i;
+function sandboxCsp(query: string | null): string {
+  let res: string[] = [], con: string[] = [];
+  try {
+    const j = query ? JSON.parse(query) as { resourceDomains?: unknown; connectDomains?: unknown } : {};
+    res = (Array.isArray(j.resourceDomains) ? j.resourceDomains : []).filter((d): d is string => typeof d === "string" && ORIGIN.test(d)).slice(0, 8);
+    con = (Array.isArray(j.connectDomains) ? j.connectDomains : []).filter((d): d is string => typeof d === "string" && ORIGIN.test(d)).slice(0, 8);
+  } catch { /* malformed -> default policy */ }
+  const r = res.join(" ");
+  return [
+    "default-src 'none'",
+    "script-src 'self' 'unsafe-inline'",
+    `style-src 'self' 'unsafe-inline' ${r}`.trim(),
+    `img-src 'self' data: ${r}`.trim(),
+    `media-src 'self' data: ${r}`.trim(),
+    `font-src 'self' ${r}`.trim(),
+    con.length ? `connect-src ${con.join(" ")}` : "connect-src 'none'",
+    "frame-src 'none'",
+    "object-src 'none'",
+    "base-uri 'self'",
+  ].join("; ");
+}
+const FONT_DIR = join(ROOT, "node_modules", "@fontsource", "inter", "files");
+const HOST_FONTS = new Set(["inter-latin-400-normal.woff2", "inter-latin-500-normal.woff2", "inter-latin-600-normal.woff2", "inter-latin-700-normal.woff2"]);
 
 const SANDBOX_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>sandbox proxy</title>
 <style>html,body{margin:0;height:100%;background:transparent}</style></head>
@@ -64,6 +77,7 @@ export async function startHost(opts: HostOptions = {}): Promise<RunningHost> {
       else if (path === "/host.js") send("text/javascript; charset=utf-8", file(join(ROOT, "dist", "host.js")));
       else if (path === "/host.css") send("text/css; charset=utf-8", file(join(ROOT, "dist", "host.css")));
       else if (path === "/config.js") send("text/javascript; charset=utf-8", config);
+      else if (path.startsWith("/fonts/") && HOST_FONTS.has(path.slice(7))) send("font/woff2", file(join(FONT_DIR, path.slice(7))));
       else if (path === "/healthz") send("application/json", '{"ok":true}');
       else { res.writeHead(404); res.end("not found"); }
     } catch (err) {
@@ -72,10 +86,11 @@ export async function startHost(opts: HostOptions = {}): Promise<RunningHost> {
   });
 
   const sandbox = createServer((req, res) => {
-    const path = new URL(req.url ?? "/", "http://x").pathname;
+    const u = new URL(req.url ?? "/", "http://x");
+    const path = u.pathname;
     try {
       if (path === "/sandbox.html") {
-        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": SANDBOX_CSP, "Cache-Control": "no-store" });
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": sandboxCsp(u.searchParams.get("csp")), "Cache-Control": "no-store" });
         res.end(SANDBOX_HTML);
       } else if (path === "/sandbox.js") {
         res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-store" });

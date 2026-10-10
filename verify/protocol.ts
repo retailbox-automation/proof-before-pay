@@ -354,9 +354,10 @@ export async function runProtocolChecks(opts: { mcpUrl: string; simBase: string;
   const booked = track("warranty_callback", await call(wr.c, "warranty_callback", { issue, confirm: true }));
   const wrows = (booked.sc.card?.rows ?? []).map((r: any) => r.label);
   await wr.close();
-  add("R2", "warranty_callback confirm: $0.00 return visit booked; warranty card", "booked, no charge, 5 rows incl. return visit",
+  add("R2", "warranty_callback confirm: $0.00 return visit booked; warranty card (coverage, evidence, return visit)", "booked, no charge, 3 rows",
     `${short(booked.speech, 100)} | ${wrows.join(" ; ")}`,
-    booked.sc.data?.booked === true && /no charge/.test(booked.speech) && wrows.length === 5 && wrows.some((r: string) => /Return visit Mon, Nov 16, 10:00 AM–12:00 PM/.test(r)) && (await charges(simBase)).length === 1);
+    booked.sc.data?.booked === true && /no charge/.test(booked.speech) && wrows.length === 3 && /^Covered: Install 2 GFCI outlets in master bath$/.test(wrows[0]) && wrows[1] === "Evidence attached" &&
+    /^Return visit: Mon, Nov 16 · 10:00 AM – 12:00 PM$/.test(wrows[2]) && (await charges(simBase)).length === 1);
 
   // ---------- U: customer surface (SPEC §7.3, §7.5) ----------
   const leaks = surface.flatMap((x) => [x.speech, ...x.card].filter((t) => TOOL_OR_ID.test(t)).map((t) => `${x.tool}: "${short(t, 60)}" (${t.match(TOOL_OR_ID)?.[0]})`));

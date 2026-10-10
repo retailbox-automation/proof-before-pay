@@ -154,9 +154,9 @@ function draftText(job: Job): string {
   return `Hi ${job.proName},\n\n${head}\n\n${body}\n\nThanks.`;
 }
 
-export type BuildOptions = { era: "legacy" | "modern"; services: Services };
+export type BuildOptions = { era: "legacy" | "modern"; services: Services; assetBase?: string };
 
-export function buildMcpServer({ era, services }: BuildOptions): McpServer {
+export function buildMcpServer({ era, services, assetBase = "" }: BuildOptions): McpServer {
   const server = new McpServer(
     { name: "proofpay", title: "Proof Before Pay", version: "0.1.0" },
     {
@@ -450,10 +450,13 @@ export function buildMcpServer({ era, services }: BuildOptions): McpServer {
   // ---------- MCP Apps views ----------
   for (const v of VIEWS) {
     const uri = viewUri(v);
-    registerAppResource(server, `proofpay-${v}`, uri, { mimeType: RESOURCE_MIME_TYPE, description: `Proof Before Pay ${v} card (MCP App view)` }, async () => {
+    // The only network resource a card loads is the Inter font from this server: declared in _meta.ui.csp.
+    const ui = { csp: { resourceDomains: assetBase ? [assetBase] : [] } };
+    registerAppResource(server, `proofpay-${v}`, uri, { mimeType: RESOURCE_MIME_TYPE, description: `Proof Before Pay ${v} card (MCP App view)`, _meta: { ui } }, async () => {
       const file = join(ROOT, "dist", "views", `${v}.html`);
       if (!existsSync(file)) throw new Error(`${file} missing - run "npm run build" first`);
-      return { contents: [{ uri, mimeType: RESOURCE_MIME_TYPE, text: readFileSync(file, "utf8") }] };
+      const html = readFileSync(file, "utf8").replaceAll("__PBP_ASSET_BASE__", assetBase);
+      return { contents: [{ uri, mimeType: RESOURCE_MIME_TYPE, text: html, _meta: { ui } }] };
     });
   }
   return server;

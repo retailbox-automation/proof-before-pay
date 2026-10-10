@@ -79,6 +79,8 @@ const longDate = (t: number) => new Intl.DateTimeFormat("en-US", { timeZone: TZ,
 const weekdayLongDate = (t: number) => new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "long", month: "long", day: "numeric" }).format(new Date(t));
 /** "Jan 13, 2027" */
 export const shortDate = (t: number) => new Intl.DateTimeFormat("en-US", { timeZone: TZ, month: "short", day: "numeric", year: "numeric" }).format(new Date(t));
+/** "Thu, Oct 15" */
+export const dayDate = (t: number) => new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "short", month: "short", day: "numeric" }).format(new Date(t));
 /** "Mon, Nov 16, 10:00 AM–12:00 PM" */
 export const visitSlot = (start: number, end: number) => `${new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "short", month: "short", day: "numeric" }).format(new Date(start))}, ${clockAmPm(start)}–${clockAmPm(end)}`;
 
