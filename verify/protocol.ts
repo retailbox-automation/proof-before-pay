@@ -22,9 +22,9 @@ const MODES = new Set(["live", "fixture", "sandbox", "simulated"]);
 // SPEC §7.5 lines, word for word.
 export const SPEC_LINES = {
   find: "Three electricians nearby. Quick Volt's license isn't in Florida's registry, so I left them out. Bright Current is licensed, 4.8 stars, 1,120 dollars. Want them?",
-  readBack: "Bright Current, Thursday 10 to noon: six items, 1,120 dollars, paid only for items proven by a photo. They agreed your front door camera logs arrival and departure. Book it?",
+  readBack: "Bright Current, Thursday 10 to noon, 1,120 dollars, paid per proven item. They agreed your door camera logs arrival and departure. Book it?",
   booked: "Booked. The confirmation is in your Alexa app.",
-  review: "Five of six items are proven by photos from the visit. The hallway smoke detector has no photo, and a 300-dollar inspection wasn't in the scope. You can pay 1,050 now; 370 waits for you.",
+  review: "Five of six items are proven. The hallway smoke detector has no photo, and a 300-dollar inspection wasn't in the scope. Pay 1,050 now; 370 waits for you.",
   checkoutPrompt: "Paying 1,050 dollars to Bright Current with Visa ending 4242. Say your voice code.",
   checkoutDone: "Order confirmed. The other 370 stays unpaid until you say so.",
   status: "Two things: the hallway smoke detector needs a photo, and the 300-dollar inspection line is your call. Want a draft note to Bright Current?",

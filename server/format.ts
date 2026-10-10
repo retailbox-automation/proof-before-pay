@@ -103,9 +103,10 @@ export function voiceFindPros(trade: string, pros: ProView[], recommended: ProVi
 
 export function voiceBookReadBack(proName: string, start: number, end: number, itemCount: number, total: number, proConsents: boolean): string {
   const consent = proConsents
-    ? "They agreed your front door camera logs arrival and departure."
+    ? "They agreed your door camera logs arrival and departure."
     : "They didn't agree to visit logging, so items can't be checked against a visit.";
-  return `${shortName(proName)}, ${spokenSlot(start, end)}: ${numberWord(itemCount)} items, ${spokenAmount(total)} dollars, paid only for items proven by a photo. ${consent} Book it?`;
+  void itemCount; // the card lists the items; the spoken read-back stays short (SPEC §7.5 rev. 2026-10-10)
+  return `${shortName(proName)}, ${spokenSlot(start, end)}, ${spokenAmount(total)} dollars, paid per proven item. ${consent} Book it?`;
 }
 export const VOICE_BOOKED = "Booked. The confirmation is in your Alexa app.";
 
@@ -130,10 +131,10 @@ export function voiceReview(job: Job, plan: PaymentPlan): string {
     else if (v.kind === "over_scope") issues.push(`${spokenAmount(l.waits)} dollars on the ${spokenLine(l.line.chargeDescription)} is above the scope`);
   }
   const head = provenIds.size === items.length
-    ? `All ${numberWord(items.length)} items are proven by photos from the visit.`
-    : `${cap(numberWord(provenIds.size))} of ${numberWord(items.length)} items are proven by photos from the visit.`;
+    ? `All ${numberWord(items.length)} items are proven.`
+    : `${cap(numberWord(provenIds.size))} of ${numberWord(items.length)} items are proven.`;
   const mid = issues.length ? ` ${cap(joinAnd(issues))}.` : "";
-  const tail = plan.waits > 0 ? ` You can pay ${spokenAmount(plan.payNow)} now; ${spokenAmount(plan.waits)} waits for you.` : ` You can pay ${spokenAmount(plan.payNow)} now.`;
+  const tail = plan.waits > 0 ? ` Pay ${spokenAmount(plan.payNow)} now; ${spokenAmount(plan.waits)} waits for you.` : ` Pay ${spokenAmount(plan.payNow)} now.`;
   return `${head}${mid}${tail}`;
 }
 
