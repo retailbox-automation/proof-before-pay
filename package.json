@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Proof Before Pay: Alexa+ add-on (MCP 2025-11-25, Streamable HTTP) that pays a contractor only for proven work",
+  "description": "Proof Before Pay: Alexa+ add-on (MCP 2025-11-25 + 2026-07-28, Streamable HTTP) that pays a contractor only for proven work",
   "engines": {
     "node": ">=24"
   },
@@ -14,7 +14,8 @@
     "verify": "node verify/run.ts",
     "test": "node --test \"src/**/*.test.ts\" \"scripts/**/*.test.ts\"",
     "sandbox": "node src/sandbox/server.ts",
-    "backtest": "node scripts/backtest.ts"
+    "backtest": "node scripts/backtest.ts",
+    "demo": "node scripts/demo.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "2.0.0",

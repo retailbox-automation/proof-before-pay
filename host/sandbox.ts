@@ -1,9 +1,10 @@
 // Sandbox proxy (outer iframe, served from a different origin than the host).
 // Per MCP Apps spec 2026-01-26 "Sandbox proxy": announce readiness, load the View HTML into an
 // inner iframe on receipt of ui/notifications/sandbox-resource-ready, relay everything else.
-// Modeled on ext-apps v2.0.0 examples/basic-host/src/sandbox.ts, trimmed to what the spike needs.
+// Modeled on ext-apps v2.0.0 examples/basic-host/src/sandbox.ts, trimmed to what the host needs.
 
-const ALLOWED_HOST_ORIGINS = ["http://127.0.0.1:5178", "http://localhost:5178"];
+// serve.ts prepends self.__PBP_HOST_ORIGINS (from HOST_PORT); the literal list is the default.
+const ALLOWED_HOST_ORIGINS: string[] = (self as unknown as { __PBP_HOST_ORIGINS?: string[] }).__PBP_HOST_ORIGINS ?? ["http://127.0.0.1:5178", "http://localhost:5178"];
 const PROXY_READY = "ui/notifications/sandbox-proxy-ready";
 const RESOURCE_READY = "ui/notifications/sandbox-resource-ready";
 

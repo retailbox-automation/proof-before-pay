@@ -3,34 +3,45 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Alexa+ host simulator (spike)</title>
-  <style>
-    body { font: 15px/1.4 system-ui, sans-serif; margin: 16px; max-width: 760px; background: #f6f7f9; color: #111; }
-    header, form, #transcript, #card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
-    code { font-size: 13px; }
-    form { display: flex; gap: 8px; }
-    #utterance { flex: 1; padding: 6px 8px; font-size: 15px; }
-    #transcript { min-height: 80px; }
-    #transcript p { margin: 4px 0; }
-    #transcript .user { color: #1c4fbf; }
-    #transcript .assistant { color: #1d6b32; }
-    #transcript .error { color: #b00020; }
-    #card iframe { width: 100%; height: 220px; border: 0; display: block; }
-    #card:empty { display: none; }
-  </style>
+  <title>Proof Before Pay · smart display simulator</title>
+  <link rel="stylesheet" href="/host.css">
 </head>
 <body>
-  <header>
-    <strong>Alexa+ host simulator</strong> (verify-spike, no LLM)
-    <div>user: <code id="user"></code> · protocol: <code id="protocol">connecting…</code> · session: <code id="session">-</code></div>
-    <div>tools: <code id="tools">-</code> <button id="new-session" type="button">New session</button></div>
-  </header>
-  <form id="say">
-    <input id="utterance" autocomplete="off" placeholder='Try "remember buy milk", "what do I have", "show my card"'>
-    <button type="submit">Send</button>
-  </form>
-  <div id="transcript"></div>
-  <div id="card"></div>
+  <!-- 1280x800 smart display frame (Alexa+ experience simulated in our web host; no LLM). -->
+  <div id="device" data-device-class="echo-show-8">
+    <div id="screen">
+      <div id="topbar">
+        <span id="addon-name">Proof Before Pay</span>
+        <span id="clock-wrap"><span id="clock">--</span> <span id="sim-badge" data-advanced="0">simulated time</span></span>
+      </div>
+      <div id="main">
+        <div id="card" aria-live="polite"></div>
+        <aside id="chips" aria-label="MCP tool calls"></aside>
+      </div>
+      <div id="subtitles">
+        <p id="sub-user"></p>
+        <p id="sub-alexa"></p>
+        <span id="sub-seconds"></span>
+      </div>
+    </div>
+  </div>
+
+  <div id="controls">
+    <form id="say">
+      <input id="utterance" autocomplete="off" placeholder='Say something, e.g. "I need a licensed electrician to replace outlets in the master bath"'>
+      <button type="submit" id="send">Send</button>
+      <button type="button" id="mic" title="Speak (Web Speech, if the browser has it)" disabled>Mic</button>
+    </form>
+    <div id="buttons">
+      <button type="button" id="play-demo">Play demo</button>
+      <button type="button" id="sim-time">Simulated time → Thu 2:15 PM</button>
+      <button type="button" id="new-session">New session</button>
+      <button type="button" id="reset-demo">Reset demo</button>
+    </div>
+    <div id="session-info">user <code id="user">-</code> · protocol <code id="protocol">connecting…</code> · session <code id="session">-</code> · tools <code id="tools">-</code></div>
+    <ol id="transcript"></ol>
+  </div>
+  <script src="/config.js"></script>
   <script type="module" src="/host.js"></script>
 </body>
 </html>
