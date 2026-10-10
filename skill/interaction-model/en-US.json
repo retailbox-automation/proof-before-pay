@@ -1,0 +1,175 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "proof before pay",
+      "intents": [
+        {
+          "name": "FindProsIntent",
+          "samples": [
+            "i need a licensed electrician",
+            "i need a licensed electrician to {job}",
+            "i need an electrician to {job}",
+            "find a licensed electrician",
+            "find a licensed electrician to {job}",
+            "find me a licensed electrician to {job}",
+            "get me a licensed electrician to {job}",
+            "i need a licensed electrician for {job}"
+          ],
+          "slots": [
+            {
+              "name": "job",
+              "type": "AMAZON.SearchQuery"
+            }
+          ]
+        },
+        {
+          "name": "BookIntent",
+          "samples": [
+            "book {pro}",
+            "book with {pro}",
+            "hire {pro}",
+            "go with {pro}",
+            "let's book {pro}",
+            "book {pro} please"
+          ],
+          "slots": [
+            {
+              "name": "pro",
+              "type": "ProName"
+            }
+          ]
+        },
+        {
+          "name": "ConfirmIntent",
+          "samples": [
+            "yes",
+            "yes please",
+            "yeah",
+            "sure",
+            "go ahead",
+            "do it",
+            "book it",
+            "yes book it",
+            "draft it",
+            "yes draft it",
+            "yes book the return visit",
+            "sounds good"
+          ],
+          "slots": []
+        },
+        {
+          "name": "ReviewInvoiceIntent",
+          "samples": [
+            "he sent the invoice",
+            "he sent the invoice pay him",
+            "he sent the invoice and wants to be paid",
+            "the electrician sent the invoice",
+            "check the invoice",
+            "review the invoice",
+            "the invoice is here",
+            "the invoice came in"
+          ],
+          "slots": []
+        },
+        {
+          "name": "PayProvenIntent",
+          "samples": [
+            "pay the proven part",
+            "pay for the proven items",
+            "pay him for what is proven",
+            "pay for this order",
+            "pay what is proven"
+          ],
+          "slots": []
+        },
+        {
+          "name": "StatusIntent",
+          "samples": [
+            "what's left with the electrician",
+            "what is left with the electrician",
+            "what's still open with the electrician",
+            "what's left on the job",
+            "what is the status of the job",
+            "what's open on the electrical job"
+          ],
+          "slots": []
+        },
+        {
+          "name": "WarrantyIntent",
+          "samples": [
+            "the bathroom outlet stopped working again",
+            "the outlet in the bathroom stopped working again",
+            "the bathroom outlet stopped working",
+            "the outlet stopped working again",
+            "the bathroom outlet is dead again",
+            "is the bathroom outlet under warranty"
+          ],
+          "slots": []
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NoIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.FallbackIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NavigateHomeIntent",
+          "samples": []
+        }
+      ],
+      "types": [
+        {
+          "name": "ProName",
+          "values": [
+            {
+              "id": "P1",
+              "name": {
+                "value": "Bright Current",
+                "synonyms": [
+                  "Bright Current Electric",
+                  "bright current electric",
+                  "the first one"
+                ]
+              }
+            },
+            {
+              "id": "P2",
+              "name": {
+                "value": "Harbor Line",
+                "synonyms": [
+                  "Harbor Line Electrical",
+                  "harbor line electrical",
+                  "the second one"
+                ]
+              }
+            },
+            {
+              "id": "P3",
+              "name": {
+                "value": "Quick Volt",
+                "synonyms": [
+                  "Quick Volt Pros",
+                  "quick volt pros"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
