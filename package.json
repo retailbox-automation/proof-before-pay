@@ -11,7 +11,10 @@
     "build": "node build.ts",
     "server": "node server/server.ts",
     "host": "node host/serve.ts",
-    "verify": "node verify/run.ts"
+    "verify": "node verify/run.ts",
+    "test": "node --test \"src/**/*.test.ts\" \"scripts/**/*.test.ts\"",
+    "sandbox": "node src/sandbox/server.ts",
+    "backtest": "node scripts/backtest.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "2.0.0",

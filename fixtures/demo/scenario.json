@@ -1,0 +1,295 @@
+{
+  "id": "demo",
+  "description": "Proof Before Pay demo: master bath electrical, Thursday 2026-10-15 10:00-12:00 America/New_York. All businesses, people and places are fictional.",
+  "timeZone": "America/New_York",
+  "clock": {
+    "start": 1792015200000,
+    "startLocal": "2026-10-14T18:00:00-04:00",
+    "demoAdvanceTo": 1792088100000,
+    "demoAdvanceToLocal": "2026-10-15T14:15:00-04:00"
+  },
+  "homeowner": {
+    "ringAccountId": "ava1.ring.account.SANDBOX01",
+    "cardOnFile": {
+      "label": "card on file",
+      "last2": "42",
+      "mode": "sandbox"
+    }
+  },
+  "professionals": [
+    {
+      "proId": "P1",
+      "businessName": "Bright Current Electric",
+      "trade": "electrician",
+      "rating": 4.8,
+      "reviewCount": 212,
+      "claimedLicense": "EC99000101",
+      "visitLoggingAgreed": true,
+      "refundPolicy": "Bright Current Electric refunds unfinished work within 30 days; card refunds follow the card issuer rules.",
+      "prices": [
+        36000,
+        19000,
+        15000,
+        21000,
+        7000,
+        14000
+      ],
+      "costEstimate": 112000
+    },
+    {
+      "proId": "P2",
+      "businessName": "Harbor Line Electrical",
+      "trade": "electrician",
+      "rating": 4.6,
+      "reviewCount": 98,
+      "claimedLicense": "EC99000102",
+      "visitLoggingAgreed": true,
+      "refundPolicy": "Harbor Line Electrical refunds unfinished work within 14 days.",
+      "prices": [
+        40000,
+        21000,
+        17000,
+        24000,
+        8000,
+        16000
+      ],
+      "costEstimate": 126000
+    },
+    {
+      "proId": "P3",
+      "businessName": "Quick Volt Pros",
+      "trade": "electrician",
+      "rating": 4.9,
+      "reviewCount": 37,
+      "claimedLicense": "EC99000103",
+      "visitLoggingAgreed": false,
+      "refundPolicy": "No refunds after work starts.",
+      "prices": [
+        30000,
+        16000,
+        12000,
+        18000,
+        6000,
+        12000
+      ],
+      "costEstimate": 94000
+    }
+  ],
+  "job": {
+    "jobId": "J1",
+    "title": "Master bath electrical",
+    "trade": "electrician",
+    "serviceDescription": "Replace outlets and smoke detectors in the master bath",
+    "timeSlot": {
+      "start": 1792072800000,
+      "end": 1792080000000,
+      "startLocal": "2026-10-15T10:00:00-04:00",
+      "endLocal": "2026-10-15T12:00:00-04:00"
+    },
+    "permit": "not_needed",
+    "items": [
+      {
+        "id": "S1",
+        "description": "Replace 12 standard outlets",
+        "quantity": 12,
+        "proof": [
+          "photo"
+        ]
+      },
+      {
+        "id": "S2",
+        "description": "Install 2 GFCI outlets in master bath",
+        "quantity": 2,
+        "proof": [
+          "photo"
+        ]
+      },
+      {
+        "id": "S3",
+        "description": "Replace 6 light switches",
+        "quantity": 6,
+        "proof": [
+          "photo"
+        ]
+      },
+      {
+        "id": "S4",
+        "description": "Replace 3 bedroom smoke detectors",
+        "quantity": 3,
+        "proof": [
+          "photo"
+        ]
+      },
+      {
+        "id": "S5",
+        "description": "Replace hallway smoke detector",
+        "quantity": 1,
+        "proof": [
+          "photo"
+        ]
+      },
+      {
+        "id": "S6",
+        "description": "Restore master bath fan circuit",
+        "quantity": 1,
+        "proof": [
+          "photo"
+        ]
+      }
+    ],
+    "doorCode": {
+      "validFrom": 1792071000000,
+      "validTo": 1792083600000,
+      "validFromLocal": "2026-10-15T09:30:00-04:00",
+      "validToLocal": "2026-10-15T13:00:00-04:00",
+      "simulated": true,
+      "note": "Simulated: the Ring Partner API has no lock control."
+    }
+  },
+  "doorbell": {
+    "deviceId": "sandbox-front-door-01",
+    "events": [
+      {
+        "type": "motion_detected",
+        "subType": "human",
+        "at": 1792067400000,
+        "atLocal": "2026-10-15T08:30:00-04:00",
+        "requiresBooking": false,
+        "note": "mail carrier; more than 60 min before the booking"
+      },
+      {
+        "type": "motion_detected",
+        "subType": "vehicle",
+        "at": 1792072680000,
+        "atLocal": "2026-10-15T09:58:00-04:00",
+        "requiresBooking": true,
+        "note": "pro van parks"
+      },
+      {
+        "type": "button_press",
+        "at": 1792072920000,
+        "atLocal": "2026-10-15T10:02:00-04:00",
+        "requiresBooking": true,
+        "note": "pro rings the bell"
+      },
+      {
+        "type": "motion_detected",
+        "subType": "human",
+        "at": 1792072950000,
+        "atLocal": "2026-10-15T10:02:30-04:00",
+        "requiresBooking": true,
+        "note": "pro at the door"
+      },
+      {
+        "type": "motion_detected",
+        "subType": "human",
+        "at": 1792074660000,
+        "atLocal": "2026-10-15T10:31:00-04:00",
+        "requiresBooking": true,
+        "note": "pro gets parts from the van"
+      },
+      {
+        "type": "motion_detected",
+        "subType": "human",
+        "at": 1792076880000,
+        "atLocal": "2026-10-15T11:08:00-04:00",
+        "requiresBooking": true,
+        "note": "pro gets tools from the van"
+      },
+      {
+        "type": "motion_detected",
+        "subType": "human",
+        "at": 1792078800000,
+        "atLocal": "2026-10-15T11:40:00-04:00",
+        "requiresBooking": true,
+        "note": "pro leaves"
+      }
+    ]
+  },
+  "photos": [
+    {
+      "photoId": "PH-S1",
+      "scopeItemId": "S1",
+      "takenAt": 1792073700000,
+      "takenAtLocal": "2026-10-15T10:15:00-04:00"
+    },
+    {
+      "photoId": "PH-S2",
+      "scopeItemId": "S2",
+      "takenAt": 1792075320000,
+      "takenAtLocal": "2026-10-15T10:42:00-04:00"
+    },
+    {
+      "photoId": "PH-S3",
+      "scopeItemId": "S3",
+      "takenAt": 1792076280000,
+      "takenAtLocal": "2026-10-15T10:58:00-04:00"
+    },
+    {
+      "photoId": "PH-S4",
+      "scopeItemId": "S4",
+      "takenAt": 1792077120000,
+      "takenAtLocal": "2026-10-15T11:12:00-04:00"
+    },
+    {
+      "photoId": "PH-S6",
+      "scopeItemId": "S6",
+      "takenAt": 1792078380000,
+      "takenAtLocal": "2026-10-15T11:33:00-04:00"
+    }
+  ],
+  "invoice": {
+    "invoiceId": "INV-1001",
+    "issuedAt": 1792079400000,
+    "issuedAtLocal": "2026-10-15T11:50:00-04:00",
+    "lines": [
+      {
+        "chargeDescription": "Replace 12 standard outlets",
+        "chargeCategory": "SERVICE",
+        "scopeItemId": "S1",
+        "quantity": 12,
+        "priceFrom": "scope"
+      },
+      {
+        "chargeDescription": "Install 2 GFCI outlets in master bath",
+        "chargeCategory": "SERVICE",
+        "scopeItemId": "S2",
+        "quantity": 2,
+        "priceFrom": "scope"
+      },
+      {
+        "chargeDescription": "Replace 6 light switches",
+        "chargeCategory": "SERVICE",
+        "scopeItemId": "S3",
+        "quantity": 6,
+        "priceFrom": "scope"
+      },
+      {
+        "chargeDescription": "Replace 3 bedroom smoke detectors",
+        "chargeCategory": "SERVICE",
+        "scopeItemId": "S4",
+        "quantity": 3,
+        "priceFrom": "scope"
+      },
+      {
+        "chargeDescription": "Replace hallway smoke detector",
+        "chargeCategory": "SERVICE",
+        "scopeItemId": "S5",
+        "quantity": 1,
+        "priceFrom": "scope"
+      },
+      {
+        "chargeDescription": "Restore master bath fan circuit",
+        "chargeCategory": "SERVICE",
+        "scopeItemId": "S6",
+        "quantity": 1,
+        "priceFrom": "scope"
+      },
+      {
+        "chargeDescription": "Electrical inspection",
+        "chargeCategory": "SERVICE",
+        "amount": 30000
+      }
+    ]
+  }
+}

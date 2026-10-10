@@ -1,5 +1,6 @@
 node_modules/
-data/
+data/*
+!data/backtest/
 dist/
 .pids/
 logs/
