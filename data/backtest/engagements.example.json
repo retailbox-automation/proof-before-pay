@@ -1,0 +1,44 @@
+[
+  {
+    "id": "E01",
+    "trade": "electrician",
+    "category": "repair",
+    "hired": true,
+    "stage_reached": "paid",
+    "outcome": "invoice had an extra line; paid in full before seeing the work",
+    "problems": ["invoice_line_not_in_scope", "paid_before_proof", "refund_refused"],
+    "went_wrong": true,
+    "caught_prehire": false,
+    "amount_quoted_usd": 800,
+    "amount_paid_usd": 1100,
+    "month": "2024-03"
+  },
+  {
+    "id": "E02",
+    "trade": "roofer",
+    "category": "quote",
+    "hired": false,
+    "stage_reached": "quote",
+    "outcome": "license not in the state registry; quote declined",
+    "problems": ["no_license"],
+    "went_wrong": true,
+    "caught_prehire": true,
+    "amount_quoted_usd": 12000,
+    "amount_paid_usd": null,
+    "month": "2024-07"
+  },
+  {
+    "id": "E03",
+    "trade": "plumber",
+    "category": "install",
+    "hired": true,
+    "stage_reached": "completed",
+    "outcome": "price high and could not get in on the first visit",
+    "problems": ["overpriced", "access_issue"],
+    "went_wrong": true,
+    "caught_prehire": false,
+    "amount_quoted_usd": 650,
+    "amount_paid_usd": 650,
+    "month": "2025-01"
+  }
+]
