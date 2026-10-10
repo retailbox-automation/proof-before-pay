@@ -3,43 +3,64 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Proof Before Pay · smart display simulator</title>
+  <title>Proof Before Pay · Echo Show 8 simulator</title>
   <link rel="stylesheet" href="/host.css">
 </head>
 <body>
-  <!-- 1280x800 smart display frame (Alexa+ experience simulated in our web host; no LLM). -->
-  <div id="device" data-device-class="echo-show-8">
-    <div id="screen">
-      <div id="topbar">
-        <span id="addon-name">Proof Before Pay</span>
-        <span id="clock-wrap"><span id="clock">--</span> <span id="sim-badge" data-advanced="0">simulated time</span></span>
+  <div id="layout">
+    <div id="device-column">
+      <!-- Generic smart display, no logos or marks. The Alexa+ experience is simulated in this web host (no LLM). -->
+      <div id="device" data-device-class="echo-show-8">
+        <div id="screen">
+          <div id="topbar">
+            <span id="addon-name">Proof Before Pay</span>
+            <span id="clock-wrap"><span id="clock">--</span> <span id="sim-badge" data-advanced="0">simulated time</span></span>
+          </div>
+          <div id="main">
+            <div id="card" aria-live="polite"></div>
+            <!-- Drawn by the host (the platform), outside the add-on's iframe. -->
+            <div id="checkout-layer" hidden aria-live="polite">
+              <div id="checkout-head">Alexa+ checkout · simulated</div>
+              <div id="checkout-seller"></div>
+              <ul id="checkout-items"></ul>
+              <dl id="checkout-totals"></dl>
+              <div id="checkout-card"></div>
+              <a id="checkout-refund" href="#" rel="noopener"></a>
+              <div id="checkout-code"><span id="checkout-code-label">Say your voice code</span> <span id="checkout-code-dots">· · · ·</span></div>
+              <div id="checkout-status"></div>
+            </div>
+          </div>
+          <div id="subtitles">
+            <p id="sub-user"></p>
+            <p id="sub-alexa"></p>
+            <span id="sub-seconds"></span>
+          </div>
+        </div>
       </div>
-      <div id="main">
-        <div id="card" aria-live="polite"></div>
-        <aside id="chips" aria-label="MCP tool calls"></aside>
-      </div>
-      <div id="subtitles">
-        <p id="sub-user"></p>
-        <p id="sub-alexa"></p>
-        <span id="sub-seconds"></span>
-      </div>
-    </div>
-  </div>
+      <div id="frame-label">Echo Show 8 simulator (1280×800 frame)</div>
 
-  <div id="controls">
-    <form id="say">
-      <input id="utterance" autocomplete="off" placeholder='Say something, e.g. "I need a licensed electrician to replace outlets in the master bath"'>
-      <button type="submit" id="send">Send</button>
-      <button type="button" id="mic" title="Speak (Web Speech, if the browser has it)" disabled>Mic</button>
-    </form>
-    <div id="buttons">
-      <button type="button" id="play-demo">Play demo</button>
-      <button type="button" id="sim-time">Simulated time → Thu 2:15 PM</button>
-      <button type="button" id="new-session">New session</button>
-      <button type="button" id="reset-demo">Reset demo</button>
+      <div id="controls">
+        <form id="say">
+          <input id="utterance" autocomplete="off" placeholder='Say something, e.g. "I need a licensed electrician to replace outlets in the master bath"'>
+          <button type="submit" id="send">Send</button>
+          <button type="button" id="mic" title="Speak (Web Speech, if the browser has it)" disabled>Mic</button>
+        </form>
+        <div id="buttons">
+          <button type="button" id="play-demo">Play demo</button>
+          <button type="button" id="sim-time">Simulated time → Thu 2:15 PM</button>
+          <button type="button" id="sim-warranty">Simulated time → Nov 12</button>
+          <button type="button" id="new-session">New session</button>
+          <button type="button" id="reset-demo">Reset demo</button>
+        </div>
+      </div>
     </div>
-    <div id="session-info">user <code id="user">-</code> · protocol <code id="protocol">connecting…</code> · session <code id="session">-</code> · tools <code id="tools">-</code></div>
-    <ol id="transcript"></ol>
+
+    <section id="devview" aria-label="Developer view">
+      <h2 id="devview-title">Developer view — not shown to customers</h2>
+      <div id="session-info">user <code id="user">-</code> · protocol <code id="protocol">connecting…</code> · session <code id="session">-</code><br>tools <code id="tools">-</code></div>
+      <div id="chips" aria-label="MCP tool calls and platform calls"></div>
+      <ol id="transcript"></ol>
+    </section>
   </div>
   <script src="/config.js"></script>
   <script type="module" src="/host.js"></script>

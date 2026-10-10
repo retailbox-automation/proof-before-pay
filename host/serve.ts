@@ -39,7 +39,7 @@ function listen(server: Server, port: number): Promise<number> {
   });
 }
 
-export type HostOptions = { hostPort?: number; proxyPort?: number; mcpUrl?: string; simUrl?: string; quiet?: boolean };
+export type HostOptions = { hostPort?: number; proxyPort?: number; mcpUrl?: string; simUrl?: string; checkoutBase?: string; quiet?: boolean };
 export type RunningHost = { hostUrl: string; proxyUrl: string; close: () => Promise<void> };
 
 export async function startHost(opts: HostOptions = {}): Promise<RunningHost> {
@@ -48,9 +48,13 @@ export async function startHost(opts: HostOptions = {}): Promise<RunningHost> {
   const proxyPort = opts.proxyPort ?? Number(env.SANDBOX_PROXY_PORT ?? 5179);
   const mcpUrl = opts.mcpUrl ?? `http://127.0.0.1:${env.MCP_PORT ?? 8787}/mcp`;
   const simUrl = opts.simUrl ?? `http://127.0.0.1:${env.SANDBOX_PORT ?? 8791}/sim`;
+  // The simulated Alexa+ checkout calls the partner's UCP-shaped endpoints directly (as Alexa+ would).
+  const checkoutBase = opts.checkoutBase ?? simUrl.replace(/\/sim$/, "");
+  // Sandbox voice purchasing code of the simulated Alexa+ account. Checked by the platform layer only.
+  const voiceCode = env.SANDBOX_VOICE_CODE ?? "4719";
   const hostOrigins = [`http://127.0.0.1:${hostPort}`, `http://localhost:${hostPort}`];
   const proxyUrl = `http://127.0.0.1:${proxyPort}/sandbox.html`;
-  const config = `window.__PBP = ${JSON.stringify({ mcpUrl, sandboxProxyUrl: proxyUrl, simUrl })};\n`;
+  const config = `window.__PBP = ${JSON.stringify({ mcpUrl, sandboxProxyUrl: proxyUrl, simUrl, checkoutBase, voiceCode })};\n`;
 
   const host = createServer((req, res) => {
     const path = new URL(req.url ?? "/", "http://x").pathname;
