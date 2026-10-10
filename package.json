@@ -18,7 +18,8 @@
     "demo": "node scripts/demo.ts",
     "skill:start": "node skill/src/server.ts",
     "skill:test": "node --test \"skill/test/*.test.ts\"",
-    "skill:bundle": "esbuild skill/src/lambda.ts --bundle --platform=node --format=cjs --target=node16 --loader:.json=json --outfile=skill/dist/lambda/index.js"
+    "skill:bundle": "esbuild skill/src/lambda.ts --bundle --platform=node --format=cjs --target=node16 --loader:.json=json --outfile=skill/dist/lambda/index.js",
+    "record": "node scripts/record-demo.ts"
   },
   "dependencies": {
     "@fontsource/inter": "5.2.8",
