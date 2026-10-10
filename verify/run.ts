@@ -113,7 +113,7 @@ try {
   }
 
   await fetch(`${SANDBOX_URL}/sim/reset`, { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"scenario":"demo"}' });
-  rows.push(...(await runBrowserChecks({ hostUrl: HOST_URL, simBase: `${SANDBOX_URL}/sim`, screensDir: SCREENS }, log)));
+  rows.push(...(await runBrowserChecks({ hostUrl: HOST_URL, simBase: `${SANDBOX_URL}/sim`, mcpUrl: MCP_URL, screensDir: SCREENS }, log)));
 } catch (err) {
   rows.push({ id: "X", check: "harness", expected: "no exception", actual: String((err as Error).stack ?? err).slice(0, 400), pass: false });
   log(`HARNESS ERROR: ${String((err as Error).stack ?? err)}`);

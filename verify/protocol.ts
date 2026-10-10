@@ -19,17 +19,25 @@ const TARGET = "2025-11-25";
 const MODERN = "2026-07-28";
 const MODES = new Set(["live", "fixture", "sandbox", "simulated"]);
 
+// SPEC §7.5 lines, word for word.
 export const SPEC_LINES = {
-  find: "I found three electricians nearby. Quick Volt's license number isn't in Florida's registry, so I left them out. Bright Current is licensed, 4.8 stars, 1,120 dollars. Want them?",
-  readBack: "Bright Current, Thursday 10 to noon, six items for 1,120 dollars. You pay only for items proven by a photo. They agreed your front door camera logs when they arrive and leave. Should I book it?",
-  booked: "Booked. The confirmation is on your home card.",
-  review: "Five of six items are proven by photos taken during the visit. The hallway smoke detector has no photo yet, and a 300-dollar inspection line wasn't in the scope. I can pay 1,050 now. 370 waits for your OK.",
-  payPrompt: "1,050 dollars to Bright Current with your card on file. Refunds follow Bright Current's policy on the card. Say your four-digit voice code.",
-  paid: "Paid 1,050 dollars, sandbox. The receipt is on your home card. The other 370 stays unpaid until you say so.",
-  status: "Two things: the hallway smoke detector needs a photo, and you haven't decided on the 300-dollar inspection line. Want a draft note to Bright Current?",
+  find: "Three electricians nearby. Quick Volt's license isn't in Florida's registry, so I left them out. Bright Current is licensed, 4.8 stars, 1,120 dollars. Want them?",
+  readBack: "Bright Current, Thursday 10 to noon: six items, 1,120 dollars, paid only for items proven by a photo. They agreed your front door camera logs arrival and departure. Book it?",
+  booked: "Booked. The confirmation is in your Alexa app.",
+  review: "Five of six items are proven by photos from the visit. The hallway smoke detector has no photo, and a 300-dollar inspection wasn't in the scope. You can pay 1,050 now; 370 waits for you.",
+  checkoutPrompt: "Paying 1,050 dollars to Bright Current with Visa ending 4242. Say your voice code.",
+  checkoutDone: "Order confirmed. The other 370 stays unpaid until you say so.",
+  status: "Two things: the hallway smoke detector needs a photo, and the 300-dollar inspection line is your call. Want a draft note to Bright Current?",
+  warranty: "That's covered: Bright Current's 90-day labor warranty runs to January 13. I can book a free return visit with the original scope and photos attached.",
 };
-export const TOOLS = ["book_job", "cancel_booking", "draft_note", "find_pros", "job_status", "pay_proven", "review_invoice"];
-export const VIEW_OF: Record<string, string> = { find_pros: "pros", book_job: "scope", cancel_booking: "scope", review_invoice: "payment", pay_proven: "confirm", job_status: "status", draft_note: "draft" };
+export const BEAT_1_4 = [SPEC_LINES.find, SPEC_LINES.readBack, SPEC_LINES.booked, SPEC_LINES.review, SPEC_LINES.checkoutPrompt, SPEC_LINES.checkoutDone];
+export const secondsOf = (t: string) => t.trim().split(/\s+/).length / 2.5;
+export const TOOLS = ["book_job", "cancel_booking", "draft_note", "find_pros", "job_status", "prepare_checkout", "review_invoice", "warranty_callback"];
+export const VIEW_OF: Record<string, string | null> = { find_pros: "pros", book_job: "scope", cancel_booking: "scope", review_invoice: "payment", prepare_checkout: null, job_status: "status", draft_note: "draft", warranty_callback: "warranty" };
+/** Tool names, API codes and internal ids must never reach the customer (SPEC §7.3). License numbers are public facts. */
+export const TOOL_OR_ID = /\b(find_pros|book_job|cancel_booking|review_invoice|prepare_checkout|job_status|draft_note|warranty_callback|pay_proven|payment_failed|ready_for_complete)\b|\b(?:PB|CAP|ORD|INV|PH)-\d+\b|\bcs_\w+|\bpm_\w+|\bli_\d+|\bJ\d+\b|\bS\d\b|\bP\d\b|reconcile-v1|plan_hash|[{}]/;
+const PAYMENT_FIELD = /voice|code|pin|card|payment|instrument|credential|cvv|pan\b/i;
+const strings = (o: unknown): string[] => (typeof o === "string" ? [o] : Array.isArray(o) ? o.flatMap(strings) : o && typeof o === "object" ? Object.values(o).flatMap(strings) : []);
 const JOB = "master bath: replace outlets and smoke detectors"; // job_summary used by the checks
 
 type Raw = { status: number; headers: Headers; body: any; text: string };
@@ -61,10 +69,22 @@ async function session(url: string, user: string, opts?: Record<string, unknown>
 }
 
 type Out = { r: CallToolResult; sc: any; steps: any[]; speech: string };
+let SURFACE: { tool: string; speech: string; card: string[] }[] | null = null;
 async function call(c: Client, name: string, args: Record<string, unknown>): Promise<Out> {
   const r = (await c.callTool({ name, arguments: args })) as CallToolResult;
   const sc = (r.structuredContent ?? {}) as any;
+  SURFACE?.push({ tool: name, speech: sc.speech ?? "", card: strings(sc.card ?? {}) });
   return { r, sc, steps: ((r._meta as any)?.steps ?? []) as any[], speech: sc.speech ?? "" };
+}
+type Ucp = { status: number; json: any; text: string };
+async function ucpCall(base: string, user: string, method: string, path: string, body?: unknown, key?: string): Promise<Ucp> {
+  const res = await fetch(`${base}${path}`, { method, headers: { "Content-Type": "application/json", ...(user ? auth(user) : {}), ...(key ? { "Idempotency-Key": key } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const text = await res.text();
+  return { status: res.status, json: text ? JSON.parse(text) : {}, text };
+}
+const payBody = (pm: string) => ({ payment: { instruments: [{ id: "instr_v", handler_id: "partner_card_on_file", type: "card", credential: { type: "payment_method_reference", payment_method_id: pm } }] } });
+async function charges(simBase: string): Promise<{ amount: number }[]> {
+  return ((await (await fetch(`${simBase}/charges`)).json()) as { charges: { amount: number }[] }).charges;
 }
 const stepsValid = (steps: any[]) => steps.length > 0 && steps.every((s) => typeof s.service === "string" && typeof s.op === "string" && MODES.has(s.mode) && typeof s.ms === "number" && typeof s.summary === "string");
 const short = (s: string, n = 120) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -110,6 +130,8 @@ async function killServer(child: ChildProcess): Promise<void> {
 
 export async function runProtocolChecks(opts: { mcpUrl: string; simBase: string; dataDir: string; serverEnv: Record<string, string> }, log: (s: string) => void): Promise<Row[]> {
   const { mcpUrl, simBase, dataDir } = opts;
+  const partner = simBase.replace(/\/sim$/, ""); // partner backend root: /checkout-sessions, /partner/*
+  const surface: { tool: string; speech: string; card: string[] }[] = [];
   const webhookUrl = mcpUrl.replace("/mcp", "/webhooks/doorbell");
   const rows: Row[] = [];
   const add = (id: string, check: string, expected: string, actual: string, pass: boolean) => {
@@ -120,6 +142,7 @@ export async function runProtocolChecks(opts: { mcpUrl: string; simBase: string;
   const userA = `verify-a-${stamp}`; // main SPEC flow
   const userB = `verify-b-${stamp}`; // booking cancelled in a later session
   await sim(simBase, "/reset", { scenario: "demo" });
+  SURFACE = surface;
 
   // ---------- P: protocol ----------
   const seen: { method: string; reqProto: string | null }[] = [];
@@ -136,11 +159,15 @@ export async function runProtocolChecks(opts: { mcpUrl: string; simBase: string;
   add("P1", "initialize negotiates protocolVersion (official client)", `"${TARGET}" + Mcp-Session-Id`, `${JSON.stringify(cA.getNegotiatedProtocolVersion())} sid=${tA.sessionId ? "present" : "MISSING"}`, cA.getNegotiatedProtocolVersion() === TARGET && !!tA.sessionId);
   const toolList = (await cA.listTools()).tools;
   const names = toolList.map((t) => t.name).sort();
-  add("P2", "tools/list has the seven proofpay tools", TOOLS.join(","), names.join(","), JSON.stringify(names) === JSON.stringify(TOOLS));
+  add("P2", "tools/list: the eight proofpay tools (pay_proven removed)", TOOLS.join(","), names.join(","), JSON.stringify(names) === JSON.stringify(TOOLS));
   const hdr = seen.find((s) => s.method === "tools/list");
   add("P3", "client sends MCP-Protocol-Version after init", `"${TARGET}"`, JSON.stringify(hdr?.reqProto), hdr?.reqProto === TARGET);
   const uiLinks = toolList.map((t) => `${t.name}->${(t._meta as any)?.ui?.resourceUri}`);
-  add("P4", "every tool links its card (_meta.ui.resourceUri)", "ui://proofpay/<view>.html per tool", uiLinks.join(" "), toolList.every((t) => (t._meta as any)?.ui?.resourceUri === `ui://proofpay/${VIEW_OF[t.name]}.html`));
+  add("P4", "tools link their card; prepare_checkout has none (the checkout screen is Alexa+'s)", "ui://proofpay/<view>.html per tool, none for prepare_checkout", uiLinks.join(" "),
+    toolList.every((t) => (VIEW_OF[t.name] === null ? !(t._meta as any)?.ui : (t._meta as any)?.ui?.resourceUri === `ui://proofpay/${VIEW_OF[t.name]}.html`)));
+  const inputs = toolList.flatMap((t) => Object.keys(((t.inputSchema as any)?.properties ?? {}) as object).map((k) => `${t.name}.${k}`));
+  const payFields = inputs.filter((k) => PAYMENT_FIELD.test(k.split(".")[1]));
+  add("P6", "no tool takes payment data (voice code, PIN, card, instrument)", "0 payment fields in any input schema", `${payFields.length ? payFields.join(",") : "none"} among ${inputs.length} fields`, payFields.length === 0);
   const res = (await cA.listResources()).resources.map((r) => r.uri).sort();
   const reads: string[] = [];
   let readsOk = res.length === 6;
@@ -152,7 +179,7 @@ export async function runProtocolChecks(opts: { mcpUrl: string; simBase: string;
     readsOk &&= ok;
     reads.push(`${v}:${ok ? "ok" : "BAD"}(${Math.round((ct?.text?.length ?? 0) / 1024)}KB)`);
   }
-  add("P5", "all six ui:// resources readable as MCP App HTML", "6 x text/html;profile=mcp-app, <!DOCTYPE html>, data-view", reads.join(" "), readsOk);
+  add("P5", "all six ui:// resources readable as MCP App HTML", "pros, scope, payment, status, draft, warranty", reads.join(" "), readsOk && res.join(",") === ["draft", "payment", "pros", "scope", "status", "warranty"].map((v) => `ui://proofpay/${v}.html`).join(","));
 
   // ---------- T: cancel flow first (the sandbox allows one active booking) ----------
   const b1 = await session(mcpUrl, userB);
@@ -168,7 +195,7 @@ export async function runProtocolChecks(opts: { mcpUrl: string; simBase: string;
   await b2.close();
   add("T1", "cancel_booking in a LATER session: read-back with policy, then cancel", "read-back (policy) -> CANCELLED",
     `${bConf.sc.data?.status} | ${short(cRead.speech, 90)} | ${cDone.sc.data?.status}`,
-    bConf.sc.data?.status === "CONFIRMED" && cRead.sc.data?.readBack === true && /Should I cancel it\?/.test(cRead.speech) && /cancel/i.test(cRead.speech) && cDone.sc.data?.status === "CANCELLED");
+    bConf.sc.data?.status === "CONFIRMED" && cRead.sc.data?.readBack === true && /Should I cancel it\?/.test(cRead.speech) && /cancellation policy: Free cancellation up to 48 hours/.test(cRead.speech) && cDone.sc.data?.status === "CANCELLED");
 
   // ---------- T: the SPEC §1 flow ----------
   const allSteps: string[] = [];
@@ -181,6 +208,10 @@ export async function runProtocolChecks(opts: { mcpUrl: string; simBase: string;
     p3?.license?.verdict === "not_found" && p3?.eligible === false && f.sc.data?.recommendedProId === "P1" && f.steps.filter((s) => /license lookup/.test(s.op)).length === 3);
   const rb = track("book_job", await call(cA, "book_job", { pro_id: "P1", confirm: false }));
   add("T4", "book_job confirm=false: voice read-back (SPEC), not booked yet", SPEC_LINES.readBack, rb.speech, rb.speech === SPEC_LINES.readBack && rb.sc.data?.needsConfirmation === true);
+  const est = rb.sc.data?.estimate;
+  add("T4b", "estimate returns SPI charges, policies (CANCELLATION), paymentInstruments (CARD)", "6 charges $1,120.00 · CANCELLATION · CARD Visa **** 4242",
+    `${est?.charges?.length} charges ${est?.charges?.reduce((a: number, c: any) => a + c.amount, 0)} · ${est?.policies?.map((x: any) => x.policyType).join(",")} · ${est?.paymentInstruments?.map((x: any) => `${x.paymentInstrumentType} ${x.paymentInstrumentId}`).join(",")}`,
+    est?.charges?.length === 6 && est.charges.reduce((a: number, c: any) => a + c.amount, 0) === 112000 && est.policies?.[0]?.policyType === "CANCELLATION" && est.paymentInstruments?.[0]?.paymentInstrumentType === "CARD" && est.paymentInstruments[0].paymentInstrumentId === "Visa **** 4242");
   const bk = track("book_job", await call(cA, "book_job", { pro_id: "P1", confirm: true }));
   const consent = bk.sc.data?.consent;
   add("T5", "book_job confirm=true: booked, consent by both sides", `${SPEC_LINES.booked} + CONFIRMED + consent granted`, `${bk.speech} | ${bk.sc.data?.status} | consent pro=${consent?.byPro} home=${consent?.byHomeowner} granted=${consent?.granted}`,
@@ -203,16 +234,62 @@ export async function runProtocolChecks(opts: { mcpUrl: string; simBase: string;
   add("T9", "review_invoice: plan numbers (reconcile-v1)", "payNow 105000, waits 37000, blockers [], notConfirmed 2",
     `payNow=${plan?.payNow} waits=${plan?.waits} blockers=${JSON.stringify(plan?.blockers)} notConfirmed=${plan?.notConfirmed?.length} engine=${plan?.engine} steps=${rv.steps.map((s) => s.service).join(" > ")}`,
     plan?.payNow === 105000 && plan?.waits === 37000 && plan?.blockers?.length === 0 && plan?.notConfirmed?.length === 2 && plan?.engine === "reconcile-v1");
-  const pp = track("pay_proven", await call(cA, "pay_proven", {}));
-  add("T10", "pay_proven without code: amount, payee, refund policy, asks for the voice code", SPEC_LINES.payPrompt, pp.speech, pp.speech === SPEC_LINES.payPrompt && pp.sc.data?.needsVoiceCode === true && pp.sc.data?.amount === 105000);
-  const bad = track("pay_proven", await call(cA, "pay_proven", { voice_code: "0000" }));
-  add("T11", "pay_proven with a wrong code: nothing paid", "isError, paid=false, no capture step", `${short(bad.speech, 80)} isError=${!!bad.r.isError} paid=${bad.sc.data?.paid}`,
-    !!bad.r.isError && bad.sc.data?.paid === false && !bad.steps.some((s) => /capture/.test(s.op)));
-  const ok = track("pay_proven", await call(cA, "pay_proven", { voice_code: "4719" }));
-  add("T12", "pay_proven with the voice code: partial capture of the proven part", `${SPEC_LINES.paid} + 105000 captured`, `${ok.speech} | amount=${ok.sc.data?.amount} ${ok.sc.data?.captureId}`,
-    ok.speech === SPEC_LINES.paid && ok.sc.data?.paid === true && ok.sc.data?.amount === 105000);
-  const again = track("pay_proven", await call(cA, "pay_proven", { voice_code: "4719" }));
-  add("T13", "pay_proven again: no second capture", "alreadyPaid, no capture step", `${short(again.speech, 80)} alreadyPaid=${again.sc.data?.alreadyPaid}`, again.sc.data?.alreadyPaid === true && !again.steps.some((s) => /capture/.test(s.op)));
+  // ---------- K: checkout belongs to Alexa+ (SPEC §7.1). Here the test plays the Alexa+ side. ----------
+  const p1 = track("prepare_checkout", await call(cA, "prepare_checkout", {}));
+  const d1 = p1.sc.data ?? {};
+  const leaked = strings(d1).concat(Object.keys(d1)).filter((x) => /instrument|credential|voice|4242|last_digits|pm_/i.test(x));
+  add("K1", "prepare_checkout: proven items only, no payment data in or out", "5 items, total 105000, waits 37000 not included, no card/instrument/code",
+    `${d1.checkoutSessionId} · ${d1.lineItems?.length} items · total ${d1.totals?.total} · waits ${d1.waits} · leaked=${leaked.length ? leaked.join(",") : "none"}`,
+    !p1.r.isError && d1.lineItems?.length === 5 && d1.totals?.total === 105000 && d1.totals?.fees === 0 && d1.waits === 37000 && leaked.length === 0 && !d1.lineItems.some((l: any) => /S5|inspection/i.test(`${l.itemId} ${l.title}`)));
+  const linesA = (d1.lineItems ?? []).map((l: any) => ({ item: { id: l.itemId }, quantity: 1 }));
+  const ucpNoAuth = await ucpCall(partner, "", "POST", "/checkout-sessions", { line_items: linesA }, "k-noauth");
+  const noKey = await ucpCall(partner, userA, "POST", "/checkout-sessions", { line_items: linesA });
+  const profile = (await (await fetch(`${partner}/.well-known/ucp`)).json()) as any;
+  add("K2", "checkout endpoints: bearer required, Idempotency-Key required, discovery profile", "401, 400, stored-card handler partner_card_on_file",
+    `HTTP ${ucpNoAuth.status}/${noKey.status} · handler ${profile?.ucp?.payment_handlers?.["com.amazon.payments.stored_payment_method"]?.[0]?.id}`,
+    ucpNoAuth.status === 401 && noKey.status === 400 && profile?.ucp?.payment_handlers?.["com.amazon.payments.stored_payment_method"]?.[0]?.id === "partner_card_on_file");
+  const cA1 = await ucpCall(partner, userA, "POST", "/checkout-sessions", { line_items: linesA }, "k-a1");
+  await ucpCall(partner, userA, "PUT", `/checkout-sessions/${cA1.json.id}`, { line_items: linesA, buyer: { first_name: "Sandbox", last_name: "Homeowner" } });
+  const tamper = await ucpCall(partner, userA, "POST", "/checkout-sessions", { line_items: [...linesA, { item: { id: linesA[0].item.id.replace(/S\d$/, "S5") }, quantity: 1 }] }, "k-tamper");
+  const priced = await ucpCall(partner, userA, "PUT", `/checkout-sessions/${cA1.json.id}`, { line_items: linesA.map((l: any, i: number) => (i ? l : { ...l, item: { ...l.item, price: 999999 } })), buyer: { first_name: "Sandbox" } });
+  const wrongPrep = await ucpCall(partner, userA, "POST", "/partner/checkout/prepare", { partnerBookingId: bk.sc.data?.partnerBookingId, scopeItemIds: ["S1", "S2", "S3", "S4", "S6"], amount: 112000, planHash: d1.planHash });
+  // The plan changes after the session was created (a different plan hash, all six items): the old session can't be paid.
+  const otherHash = "f".repeat(64);
+  const swap = await ucpCall(partner, userA, "POST", "/partner/checkout/prepare", { partnerBookingId: bk.sc.data?.partnerBookingId, scopeItemIds: ["S1", "S2", "S3", "S4", "S5", "S6"], amount: 112000, planHash: otherHash });
+  const stale = await ucpCall(partner, userA, "POST", `/checkout-sessions/${cA1.json.id}/complete`, payBody("pm_visa_4242"), "k-stale");
+  add("K3", "wrong amount rejected: extra item, changed price, amount != proven total, stale plan hash", "409 quote_mismatch x2, 409 amount_mismatch, 409 on the stale session, 0 charges",
+    `create+S5 ${tamper.status} ${tamper.json.error?.code} · price ${priced.status} ${priced.json.error?.code} · prepare 112000 ${wrongPrep.status} ${wrongPrep.json.error?.code} · stale complete ${stale.status} ${stale.json.error?.code} · charges ${(await charges(simBase)).length}`,
+    tamper.status === 409 && tamper.json.error?.code === "quote_mismatch" && priced.status === 409 && priced.json.error?.code === "quote_mismatch" && wrongPrep.status === 409 && wrongPrep.json.error?.code === "amount_mismatch" && swap.status === 200 && stale.status === 409 && /quote_changed|amount_mismatch/.test(stale.json.error?.code ?? "") && (await charges(simBase)).length === 0);
+  // Prepare again from the real plan: a fresh session (the tampered one is canceled).
+  const p2 = track("prepare_checkout", await call(cA, "prepare_checkout", {}));
+  const d2 = p2.sc.data ?? {};
+  const lines = (d2.lineItems ?? []).map((l: any) => ({ item: { id: l.itemId }, quantity: 1 }));
+  const created = await ucpCall(partner, userA, "POST", "/checkout-sessions", { line_items: lines }, "k-create");
+  const replay = await ucpCall(partner, userA, "POST", "/checkout-sessions", { line_items: lines }, "k-create");
+  const conflict = await ucpCall(partner, userA, "POST", "/checkout-sessions", { line_items: lines.slice(1) }, "k-create");
+  add("K4", "Create: the session prepare_checkout staged; Idempotency-Key replay and conflict", "201 same id; same key+body -> identical; same key+other body -> 409",
+    `${created.status} ${created.json.id}=${d2.checkoutSessionId} · replay ${replay.status} identical=${replay.text === created.text} · conflict ${conflict.status} ${conflict.json.code}`,
+    created.status === 201 && created.json.id === d2.checkoutSessionId && created.json.id !== cA1.json.id && replay.status === 201 && replay.text === created.text && conflict.status === 409 && conflict.json.code === "idempotency_conflict");
+  const ready = await ucpCall(partner, userA, "PUT", `/checkout-sessions/${created.json.id}`, { line_items: lines, buyer: { first_name: "Sandbox", last_name: "Homeowner" } });
+  const shown = ready.json;
+  add("K5", "what Alexa+ reads back: seller, 5 items, Subtotal/Fees/Total, Visa ending 4242, refund-policy link title", "ready_for_complete · $1,050.00 · visa 4242 · \"Refund policy · Bright Current Electric\"",
+    `${shown.status} · ${shown.metadata?.seller} · ${shown.line_items?.length} items · ${shown.totals?.map((t: any) => `${t.type} ${t.amount}`).join(", ")} · ${shown.payment?.instruments?.[0]?.display?.brand} ${shown.payment?.instruments?.[0]?.display?.last_digits} · "${shown.links?.find((l: any) => l.type === "refund_policy")?.title}"`,
+    shown.status === "ready_for_complete" && shown.line_items?.length === 5 && shown.totals?.find((t: any) => t.type === "total")?.amount === 105000 && shown.totals?.find((t: any) => t.type === "fee")?.amount === 0 && shown.payment?.instruments?.[0]?.display?.last_digits === "4242" && shown.links?.find((l: any) => l.type === "refund_policy")?.title === "Refund policy · Bright Current Electric");
+  const declined = await ucpCall(partner, userA, "POST", `/checkout-sessions/${created.json.id}/complete`, payBody("pm_visa_0002"), "k-decline");
+  const notOffered = await ucpCall(partner, userA, "POST", `/checkout-sessions/${created.json.id}/complete`, payBody("pm_mc_9999"), "k-other");
+  add("K6", "decline = HTTP 200 incomplete + payment_failed; a card not returned at Create is refused; nothing charged", "200 incomplete payment_failed x2, 0 charges",
+    `${declined.status} ${declined.json.status} ${declined.json.messages?.[0]?.code} · ${notOffered.status} ${notOffered.json.status} ${notOffered.json.messages?.[0]?.code} · charges ${(await charges(simBase)).length}`,
+    declined.status === 200 && declined.json.status === "incomplete" && declined.json.messages?.[0]?.code === "payment_failed" && notOffered.status === 200 && notOffered.json.messages?.[0]?.code === "payment_failed" && (await charges(simBase)).length === 0);
+  const done = await ucpCall(partner, userA, "POST", `/checkout-sessions/${created.json.id}/complete`, payBody("pm_visa_4242"), "k-pay");
+  const again = await ucpCall(partner, userA, "POST", `/checkout-sessions/${created.json.id}/complete`, payBody("pm_visa_4242"), "k-pay");
+  const second = await ucpCall(partner, userA, "POST", `/checkout-sessions/${created.json.id}/complete`, payBody("pm_visa_4242"), "k-pay-2");
+  const edit = await ucpCall(partner, userA, "PUT", `/checkout-sessions/${created.json.id}`, { line_items: lines, buyer: { first_name: "Sandbox" } });
+  const ch = await charges(simBase);
+  add("K7", "double Complete does not double charge (same key replays; new key 409; completed is immutable)", "completed once; replay identical; 409; PUT 409; 1 charge of 105000",
+    `${done.status} ${done.json.status} · replay identical=${again.text === done.text} · new key ${second.status} · PUT ${edit.status} · charges ${ch.map((c) => c.amount).join(",")}`,
+    done.status === 200 && done.json.status === "completed" && again.text === done.text && second.status === 409 && edit.status === 409 && ch.length === 1 && ch[0].amount === 105000);
+  const pAfter = track("prepare_checkout", await call(cA, "prepare_checkout", {}));
+  add("K8", "prepare_checkout after payment: nothing more to pay", "isError, 'already paid'", short(pAfter.speech, 90), !!pAfter.r.isError && /already paid/.test(pAfter.speech));
 
   // ---------- S: state survives a new session / a 2026-07-28 client / a restart ----------
   const sid1 = tA.sessionId!;
@@ -226,6 +303,9 @@ export async function runProtocolChecks(opts: { mcpUrl: string; simBase: string;
   const dn = track("draft_note", await call(a2.c, "draft_note", {}));
   add("T14", "draft_note: plain note, never sent", "text mentions the open items, sent=false", short(dn.sc.data?.text?.replace(/\n/g, " ") ?? "", 110),
     dn.sc.data?.sent === false && /hallway smoke detector/i.test(dn.sc.data?.text ?? "") && /Electrical inspection/.test(dn.sc.data?.text ?? "") && /never sends/.test(dn.sc.card?.footer ?? ""));
+  add("S2b", "the add-on learns the payment by reading the checkout session (UCP Get), never by taking it", "K8 read the session (completed); job_status paid 105000 from saved state",
+    `K8 steps=${pAfter.steps.map((x: any) => `${x.service}: ${x.summary}`).join(" > ")} | job_status paid=${st.sc.data?.paid}`,
+    pAfter.steps.some((x: any) => /checkout session/i.test(x.service) && /completed/.test(x.summary)) && st.sc.data?.paid === 105000);
   const other = await call(a2.c, "job_status", {}).catch(() => null);
   await a2.close();
   const fresh = await session(mcpUrl, `verify-fresh-${stamp}`);
@@ -260,6 +340,29 @@ export async function runProtocolChecks(opts: { mcpUrl: string; simBase: string;
   }
   add("S5", "state survives a server PROCESS restart (file store, atomic rename)", "new pid, same status, paid 105000", restartActual, restartPass);
   add("T15", "every tool result carries _meta.steps {service, op, mode, ms, summary}", "all valid", allSteps.join(" "), allSteps.every((s) => !s.endsWith("!")));
+
+  // ---------- R: warranty, a month later (SPEC §7.5 beat 6) ----------
+  const advW = await sim(simBase, "/advance", { to: "warranty" });
+  const wr = await session(mcpUrl, userA);
+  const issue = "The master bath fan stopped working again.";
+  const offer = track("warranty_callback", await call(wr.c, "warranty_callback", { issue }));
+  const od = offer.sc.data ?? {};
+  add("R1", "warranty_callback offer: SPEC line; 90-day labor warranty to Jan 13, 2027; $0.00 return visit Mon Nov 16 10-12; evidence scope + 2 photos + visit log", SPEC_LINES.warranty,
+    `${offer.speech} | ends ${od.warrantyEnds} · visit ${od.returnVisit?.start}..${od.returnVisit?.end} · $${od.amount} · evidence ${JSON.stringify(od.evidence)} · clock ${advW.nowLocal}`,
+    offer.speech === SPEC_LINES.warranty && od.covered === true && od.amount === 0 && od.booked === false && new Date(od.warrantyEnds).toLocaleDateString("en-US", { timeZone: "America/New_York" }) === "1/13/2027" &&
+    od.returnVisit?.start === "2026-11-16T15:00:00.000Z" && od.returnVisit?.end === "2026-11-16T17:00:00.000Z" && od.evidence?.scopeItems === 6 && od.evidence?.photos === 2 && od.evidence?.visit?.arrivedAt != null);
+  const booked = track("warranty_callback", await call(wr.c, "warranty_callback", { issue, confirm: true }));
+  const wrows = (booked.sc.card?.rows ?? []).map((r: any) => r.label);
+  await wr.close();
+  add("R2", "warranty_callback confirm: $0.00 return visit booked; warranty card", "booked, no charge, 5 rows incl. return visit",
+    `${short(booked.speech, 100)} | ${wrows.join(" ; ")}`,
+    booked.sc.data?.booked === true && /no charge/.test(booked.speech) && wrows.length === 5 && wrows.some((r: string) => /Return visit Mon, Nov 16, 10:00 AM–12:00 PM/.test(r)) && (await charges(simBase)).length === 1);
+
+  // ---------- U: customer surface (SPEC §7.3, §7.5) ----------
+  const leaks = surface.flatMap((x) => [x.speech, ...x.card].filter((t) => TOOL_OR_ID.test(t)).map((t) => `${x.tool}: "${short(t, 60)}" (${t.match(TOOL_OR_ID)?.[0]})`));
+  add("U1", "no tool name, API code or internal id in any Alexa line or card text", `0 hits over ${surface.length} results`, leaks.length ? leaks.slice(0, 4).join(" | ") : `0 hits over ${surface.length} results`, leaks.length === 0 && surface.length > 10);
+  const homeCard = surface.filter((x) => /home card/i.test(x.speech));
+  add("U2", "voice lines work without a screen: 'in your Alexa app', never 'on your home card'", "0", `${homeCard.length} · Alexa app mentions ${surface.filter((x) => /in your Alexa app/.test(x.speech)).length}`, homeCard.length === 0);
 
   // ---------- W: webhook ----------
   const wb = buttonPressWebhook({ accountId: "ava1.ring.account.SANDBOX01", requestId: `verify-${stamp}`, sentAt: Date.now(), deviceId: "sandbox-front-door-01", timestamp: Date.now() });
@@ -300,9 +403,10 @@ export async function runProtocolChecks(opts: { mcpUrl: string; simBase: string;
   add("N9", "non-initialize request without Mcp-Session-Id", "HTTP 400", `HTTP ${noSid.status} ${short(String(noSid.body?.error?.message ?? ""), 90)}`, noSid.status === 400);
   if (good.sid) await raw(mcpUrl, "DELETE", undefined, { "mcp-session-id": good.sid, ...auth(userA) });
   const v = await session(mcpUrl, userA);
-  const badCode = await call(v.c, "pay_proven", { voice_code: "12ab" });
+  const longIssue = await call(v.c, "warranty_callback", { issue: "x".repeat(500) });
   const longTxt = await call(v.c, "find_pros", { trade: "electrician", job_summary: "x".repeat(500) });
+  const gone2 = await v.c.callTool({ name: "pay_proven", arguments: {} }).then((r: any) => !!r.isError).catch(() => true);
   await v.close();
-  add("N10", "input schema rejects a malformed voice code and an unbounded text field", "isError x2", `voice_code=12ab isError=${!!badCode.r.isError} | 500-char summary isError=${!!longTxt.r.isError}`, !!badCode.r.isError && !!longTxt.r.isError);
+  add("N10", "input schema rejects unbounded text fields; pay_proven no longer exists", "isError x3", `500-char issue isError=${!!longIssue.r.isError} | 500-char summary isError=${!!longTxt.r.isError} | pay_proven rejected=${gone2}`, !!longIssue.r.isError && !!longTxt.r.isError && gone2);
   return rows;
 }

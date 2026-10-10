@@ -147,7 +147,7 @@ export function paymentCard(job: Job): CardModel {
       { label: "Fees", value: usd(0), kind: "fees" },
       { label: "Total", value: usd(plan.payNow), kind: "total" },
     ],
-    footer: paid ? `Sandbox · Paid ${usd(paid)} through Alexa+ checkout. The rest waits for you.` : "Sandbox · Pay proven items now, the rest after you confirm. Alexa+ completes the payment.",
+    footer: paid ? `Sandbox · Paid ${usd(paid)} through Alexa+ checkout. The rest waits for you.` : "Sandbox · Pay proven items now, the rest after you confirm.",
     // Touch path to Alexa+ checkout: a ui/message with the purchase intent, never tools/call (SPEC §7.1).
     action: plan.payNow > 0 && !paid ? { label: `Pay ${usd(plan.payNow)}`, message: "Pay for this order" } : undefined,
   };
