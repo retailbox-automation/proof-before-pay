@@ -69,7 +69,8 @@ export interface Services {
   readonly signingKey: string;
   now(): Promise<{ now: number; simulated: boolean }>;
   listProfessionals(q: { projectDescription: string; zipCode: string; trade: string }): Promise<Professional[]>;
-  lookupLicense(licenseNumber: string, claimedName: string): Promise<LicenseCheck>;
+  /** `now` = check time shown as "checked <time>" (the simulated clock in fixture mode). */
+  lookupLicense(licenseNumber: string, claimedName: string, now?: number): Promise<LicenseCheck>;
   createBooking(r: { stage: "ESTIMATE" | "CONFIRMATION"; proId: string; alexaBookingId: string; partnerBookingId?: string; projectDescription: string }): Promise<Quote>;
   cancelBooking(partnerBookingId: string, reason: string): Promise<{ status: string }>;
   getInvoice(partnerBookingId: string): Promise<Invoice | null>; // null = not posted yet
@@ -196,8 +197,8 @@ export function createServices(env: Env = envFromProcess()): Services {
       return r.professionals.map(toProfessional);
     },
 
-    lookupLicense(licenseNumber, claimedName) {
-      return coreLookupLicense(licenseNumber, claimedName, { mode: env.REGISTRY_MODE });
+    lookupLicense(licenseNumber, claimedName, now) {
+      return coreLookupLicense(licenseNumber, claimedName, { mode: env.REGISTRY_MODE, now });
     },
 
     async createBooking(r) {
