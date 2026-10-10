@@ -102,3 +102,47 @@ Reads `data/backtest/engagements.anon.json` (anonymized ledger of the author's r
 
 ## 6. Cut list (not in v1)
 Multiple trades, real marketplace, real lock, permit lookup beyond a flag, disputes through a platform, a pro-side app, LLM extraction of PDF invoices, Ring track submission (decision 2026-09-01 skips hardware tracks; reopening is the owner's call).
+
+---
+
+## 7. v2 — changes after the research pass (2026-10-10, supersede §1/§4/§5 where they conflict)
+
+Source: our research notes (not published; critic-corrected; file:line citations into the Alexa+ doc snapshots of 2026-10-03, re-checked live 2026-10-10).
+
+### 7.1 Payment belongs to Alexa+ (blocking)
+Alexa+ docs: "The checkout flow is owned by Alexa+. Alexa+ handles voice PIN, payment instrument selection, and purchase confirmation — you don't implement payment UX." and "Don't implement payment UI (no card entry, no wallet display, no PIN prompts)", "Don't use tools/call for payment actions" (`implement-checkout-endpoints.txt:213, :236-237`).
+- The add-on's payment card (beat 3) is the **pre-checkout** card: two stacks (proven / waits), evidence rows, and a price breakdown for the proven part (Subtotal $1,050.00 · Fees $0.00 · Total $1,050.00). Its button "Pay $1,050.00" sends an MCP Apps `ui/message` with text "Pay for this order" (touch path), never `tools/call`.
+- `pay_proven` is removed. New tool `prepare_checkout` (no payment data, no code): creates a checkout session in the sandbox partner backend whose `line_items` are only the proven items (S1, S2, S3, S4, S6 = $1,050.00) and returns the session id + summary. The $370 is not in the session and is never shown as a discount.
+- New host layer **"Alexa+ checkout · simulated"** (drawn by the host, outside the add-on iframe, over the dimmed card): reads back seller, the five line items, totals, "Visa ending 4242 · sandbox", link "Refund policy · Bright Current Electric", asks for the 4-digit voice code (masked ••••), then calls the sandbox UCP-shaped endpoints itself: `POST /checkout-sessions` → `PUT` → `POST /checkout-sessions/{id}/complete` with `Idempotency-Key` (24 h replay; different body → 409; decline → 200 `status: incomplete` + `payment_failed`; amount must equal the reconcile plan's proven total, checked by plan hash) and shows "Order confirmed". Stored card handler id `partner_card_on_file` (brand + last_digits). Merchant of record: the pro via the marketplace, not Alexa.
+- Voice line (beat 4, platform voice): "Paying 1,050 dollars to Bright Current with Visa ending 4242. Say your voice code." → "Order confirmed. The other 370 stays unpaid until you say so."
+- Later, after the homeowner's OK for a waiting item, a second checkout session is created for that item only (design inference; open question to Amazon).
+
+### 7.2 Booking pattern honesty
+The Home Services SPI documents `ListProfessionals` for Browse-and-Choose and `CreateBooking` (experimental) for Auto-Match, and says Auto-Match does not use browsing operations (`home-services-spi.txt:125-136, :180, :331`). Keep the story; label it in README, chips and code comments: "Browse-and-Choose discovery + CreateBooking stage (experimental SPI, documented for Auto-Match) — our combination". `/spi/invoice`, `/spi/photos` and checkout sessions are labelled "partner-side extension, not an Alexa SPI".
+- Beat 2 estimate returns `charges`, `policies` (CANCELLATION) and `paymentInstruments` (CARD) as the SPI does; the read-back uses "to be paid after the work is proven".
+- `cancel_booking`: read back booking details and the cancellation policy, then ask for confirmation (§15).
+
+### 7.3 Customer surface vs developer view
+"Surface no API codes, tool names, JSON, or internal IDs in any customer-facing response" (`functional-requirements.txt:133`). Tool-call chips, `_meta.steps`, mode badges and session ids live only in a host panel titled **"Developer view — not shown to customers"**, visibly separate from the device. Alexa's spoken lines and the cards never contain tool names or ids.
+- Voice lines must work without a screen: replace "on your home card" with "in your Alexa app".
+
+### 7.4 Brands
+No Alexa, Echo, Amazon or Ring logos or look-alike marks anywhere (Amazon refused logo permission, forum 45450; video rule bars third-party marks). Words "Alexa+", "Echo Show" as plain text only. The simulator frame is a generic smart display labelled "Echo Show 8 simulator (1280×800 frame)".
+
+### 7.5 Voice budget (beats 1–4 must fit 60 s with the user's lines)
+1. "Three electricians nearby. Quick Volt's license isn't in Florida's registry, so I left them out. Bright Current is licensed, 4.8 stars, 1,120 dollars. Want them?"
+2. "Bright Current, Thursday 10 to noon: six items, 1,120 dollars, paid only for items proven by a photo. They agreed your front door camera logs arrival and departure. Book it?" → "Booked. The confirmation is in your Alexa app."
+3. "Five of six items are proven by photos from the visit. The hallway smoke detector has no photo, and a 300-dollar inspection wasn't in the scope. You can pay 1,050 now; 370 waits for you."
+4. (Alexa+ checkout, simulated) as in 7.1.
+5. (new session) "Two things: the hallway smoke detector needs a photo, and the 300-dollar inspection line is your call. Want a draft note to Bright Current?"
+6. (warranty, a month later, new session) "That's covered: Bright Current's 90-day labor warranty runs to January 13. I can book a free return visit with the original scope and photos attached." — tool `warranty_callback` (sandbox booking at $0.00, evidence attached). Added under the owner's "do everything" instruction of 2026-10-10; both independent reviews recommended it (internal review notes, not published). Recurring services stay out of the demo (one README line only).
+
+### 7.6 Numbers allowed in the video and README (exact wording)
+- Author's history (backtest, `docs/proof-before-pay/BACKTEST.md`): "Since we closed on our house in July, I've contacted 119 contractors and home-service companies and booked 13 jobs. Five went wrong." Not "36 / 24".
+- "Florida received 4,847 unlicensed-activity complaints in one year." (DBPR ULA Report FY 2024-25, p.13)
+- "Florida paid $4.35 million in 2025 to homeowners harmed by licensed contractors." (DBPR 2025 Accomplishments, posted 2026-01-07)
+- "Americans filed 81,925 home-repair reports with the FTC in 2024." (say "reports", never "scams")
+Never: "1 in 10 Americans", "80% of complaints valid", "escrow", "hold".
+
+### 7.7 Real device (ASK skill) — time-boxed, after the device test (Echo Show 8 arrives 2026-10-11)
+Folder `skill/`: interaction model (FindProsIntent, BookIntent, ReviewInvoiceIntent, StatusIntent, WarrantyIntent + Help/Stop/Fallback), ask-sdk-core handler that acts as an MCP client of the same `proofpay` server (fixture registry mode, 6 s client timeout; Alexa waits ≤ 8 s), APL 2024.3 documents for the pros, payment and status cards, own-HTTPS-endpoint adapter (signature verification on) plus deploy notes. Payment in the skill is never collected (Alexa+ owns checkout); the skill shows the pre-checkout card and says the platform completes it. Human gates: developer account registration and device setup on the same Amazon login (owner), public HTTPS endpoint for the recording session.
