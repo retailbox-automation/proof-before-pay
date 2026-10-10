@@ -95,12 +95,19 @@ try {
   rows.push(r);
   log(`${r.pass ? "PASS" : "FAIL"} C1 ${r.check} :: ${r.actual}`);
 
+  // Backtest (lane CORE): exit 0 = published numbers reproduce, 1 = they differ, 2 = ledger not supplied.
+  const published = existsSync(join(ROOT, "..", "..", "docs", "proof-before-pay", "BACKTEST.md"));
   if (existsSync(join(ROOT, "scripts", "backtest.ts"))) {
     const bt = spawnSync(process.execPath, ["scripts/backtest.ts", "--check"], { cwd: ROOT, encoding: "utf8" });
     writeFileSync(join(LOGS, "backtest.log"), bt.stdout + bt.stderr);
-    const row = { id: "C2", check: "backtest re-run matches docs/proof-before-pay/BACKTEST.md", expected: "exit 0", actual: `exit ${bt.status} ${(bt.stdout + bt.stderr).trim().split("\n").at(-1)?.slice(0, 120) ?? ""}`, pass: bt.status === 0 };
-    rows.push(row);
-    log(`${row.pass ? "PASS" : "FAIL"} C2 ${row.check} :: ${row.actual}`);
+    const last = (bt.stdout + bt.stderr).trim().split("\n").at(-1)?.slice(0, 140) ?? "";
+    if (bt.status === 2 && !published) {
+      log(`NOTE C2 backtest pending: anonymized ledger not supplied and no BACKTEST.md published yet (exit 2) - not counted`);
+    } else {
+      const row = { id: "C2", check: "backtest re-run reproduces docs/proof-before-pay/BACKTEST.md", expected: "exit 0", actual: `exit ${bt.status} ${last}`, pass: bt.status === 0 };
+      rows.push(row);
+      log(`${row.pass ? "PASS" : "FAIL"} C2 ${row.check} :: ${row.actual}`);
+    }
   } else {
     log("NOTE C2 backtest: scripts/backtest.ts is not in this tree yet (lane CORE); not run");
   }
