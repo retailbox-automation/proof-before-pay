@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const DIST = join(ROOT, "dist");
-const VIEWS = ["pros", "scope", "payment", "confirm", "status", "draft"] as const;
+const VIEWS = ["pros", "scope", "payment", "status", "draft", "warranty"] as const;
 mkdirSync(join(DIST, "views"), { recursive: true });
 
 const common = { bundle: true, platform: "browser" as const, target: "es2022", minify: true, legalComments: "none" as const, logLevel: "warning" as const };

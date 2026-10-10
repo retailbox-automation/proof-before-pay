@@ -3,6 +3,9 @@
 // webhook signature). The MCP server talks ONLY to this interface.
 //
 // HTTP calls go to the sandbox services (src/sandbox/server.ts, SPEC §3.4, default http://127.0.0.1:8791).
+// Discovery uses ListProfessionals (Browse-and-Choose) and booking uses the CreateBooking stage, which the Home Services
+// SPI documents as experimental and for Auto-Match: our combination. Invoice, photos, checkout preparation and warranty
+// claims are partner-side extensions, not Alexa SPIs. Payment itself is never done here: Alexa+ owns checkout.
 // Base URLs come from env, so the camera simulator can be swapped for the real Partner API base and a
 // Playground token without code changes. Pure logic comes from src/core (lane CORE).
 import type { Charge, Evidence, LicenseCheck, PaymentPlan, Photo, Professional, ScopeOfWork, SourceMode, VisitWindow } from "../core/types.ts";
@@ -17,6 +20,7 @@ export type Env = {
   SPI_BASE: string; // sandbox marketplace base, e.g. http://127.0.0.1:8791/spi
   RING_API_BASE: string; // camera API base, e.g. http://127.0.0.1:8791/ring
   SIM_BASE: string; // sandbox clock base, e.g. http://127.0.0.1:8791/sim
+  PARTNER_BASE: string; // partner backend root: /partner/* extensions and the UCP-shaped /checkout-sessions
   RING_SIGNING_KEY: string; // HMAC key for camera webhooks
   RING_TOKEN: string; // bearer for the camera history API ("sandbox" against the simulator)
   CAMERA_MODE: SourceMode; // how camera facts are labelled: "simulated" against the sandbox simulator
@@ -31,6 +35,7 @@ export function envFromProcess(e: NodeJS.ProcessEnv = process.env): Env {
     SPI_BASE: e.SPI_BASE ?? `${sandbox}/spi`,
     RING_API_BASE: e.RING_API_BASE ?? `${sandbox}/ring`,
     SIM_BASE: e.SIM_BASE ?? `${sandbox}/sim`,
+    PARTNER_BASE: e.PARTNER_BASE ?? sandbox,
     RING_SIGNING_KEY: e.RING_SIGNING_KEY || "sandbox-signing-key", // sandbox literal, same default as src/sandbox/server.ts
     RING_TOKEN: e.RING_TOKEN ?? "sandbox",
     CAMERA_MODE: (e.CAMERA_MODE as SourceMode | undefined) ?? "simulated",
@@ -56,7 +61,8 @@ export type Quote = {
   scope: ScopeOfWork; // items with this pro's prices and proof rules; consent as recorded on the booking
   total: number;
   policies: Policy[];
-  paymentInstrument: { id: string; wallet: string }; // card on file, e.g. "•• 42" / "sandbox"
+  paymentInstrument: { id: string; wallet: string }; // SPI paymentInstrumentId, e.g. "Visa **** 4242" / "sandbox"
+  purchaseDetails: SandboxBooking["purchaseDetails"]; // SPI Purchase as returned on the estimate
   proConsentsToVisitLog: boolean;
   doorCode: { from: number; to: number; note: string };
 };
@@ -65,7 +71,21 @@ export type Quote = {
 export type CameraEvent = DoorEvent & { deviceId: string; accountId: string | null };
 
 export type Invoice = { charges: Charge[]; issuedAt: number | null; invoiceId: string | null };
-export type Capture = { captureId: string; amount: number; status: string; remaining: number | null };
+/** UCP-shaped checkout session as the partner backend returns it (payment instruments stripped for the add-on). */
+export type CheckoutSummary = {
+  id: string;
+  status: "incomplete" | "ready_for_complete" | "completed" | "canceled";
+  lineItems: { itemId: string; title: string; amount: number }[];
+  totals: { subtotal: number; fees: number; total: number };
+  links: { type: string; title: string; url: string }[];
+  seller: string;
+  merchantOfRecord: string;
+  planHash: string;
+};
+export type WarrantyOffer = {
+  covered: boolean; reason: string; laborWarrantyDays: number; jobDate: number; warrantyEnds: number;
+  returnVisit: { start: number; end: number }; amount: number; booking: { partnerBookingId: string; status: string; timeSlot: { start: number; end: number } } | null;
+};
 export type BookingRequest =
   | { stage: "ESTIMATE"; proId: string; alexaBookingId: string }
   | { stage: "CONFIRMATION"; alexaBookingId: string; partnerBookingId: string; homeownerConsentToVisitLogging: boolean };
@@ -80,7 +100,12 @@ export interface Services {
   cancelBooking(partnerBookingId: string): Promise<{ status: string }>;
   getInvoice(partnerBookingId: string): Promise<Invoice | null>; // null = not posted yet
   getPhotos(partnerBookingId: string): Promise<Photo[]>;
-  capture(r: { partnerBookingId: string; amount: number; idempotencyKey: string }): Promise<Capture>;
+  /** Partner-side extension: stage a checkout session whose line items are the proven items of one plan. */
+  prepareCheckout(userId: string, r: { partnerBookingId: string; scopeItemIds: string[]; amount: number; planHash: string }): Promise<CheckoutSummary>;
+  /** UCP Get, with the user's account-link token: is the session completed (paid by Alexa+ checkout)? */
+  getCheckout(userId: string, sessionId: string): Promise<CheckoutSummary>;
+  /** Partner-side extension: labor-warranty coverage; confirm=true books a $0.00 return visit. */
+  warrantyClaim(userId: string, r: { partnerBookingId: string; scopeItemIds: string[]; confirm: boolean }): Promise<WarrantyOffer>;
   cameraHistory(deviceId: string): Promise<CameraEvent[]>;
   /** Constant-time check of the X-Signature header over the RAW request bytes. */
   verifyWebhook(rawBody: Buffer, signatureHeader: string | string[] | undefined): boolean;
@@ -97,7 +122,12 @@ export type SandboxBooking = {
   timeSlot: { start: number; end: number }; costEstimate: number; scope: ScopeOfWork;
   visitLogging: { proAgreed: boolean; homeownerAgreed: boolean; what: string };
   doorCode: { validFrom: number; validTo: number; simulated: true; note: string };
-  payment: { cardOnFile: { label: string; last2: string; mode: string }; refundPolicy: string };
+  payment: { cardOnFile: { id: string; brand: string; last_digits: string; mode: string }; refundPolicy: string; cancellationPolicy: string };
+  purchaseDetails: {
+    charges: { chargeDescription: string; chargeCategory: string; amount: number; quantity: number }[];
+    policies: { policyType: "CANCELLATION"; policyDescription: string; policyUrl: string }[];
+    paymentInstruments: { paymentInstrumentType: "CARD"; paymentInstrumentId: string; wallet: string }[];
+  };
 };
 
 export function toQuote(b: SandboxBooking): Quote {
@@ -113,14 +143,31 @@ export function toQuote(b: SandboxBooking): Quote {
     end: b.timeSlot.end,
     scope: b.scope,
     total: b.scope.items.reduce((s, i) => s + i.price, 0),
-    // The marketplace states a refund policy. Cancellation: nothing is charged before proof, so it costs nothing.
     policies: [
       { kind: "refund", text: b.payment.refundPolicy },
-      { kind: "cancellation", text: "Nothing is charged before the work is proven, so cancelling costs nothing." },
+      ...b.purchaseDetails.policies.filter((p) => p.policyType === "CANCELLATION").map((p) => ({ kind: "cancellation" as const, text: p.policyDescription })),
     ],
-    paymentInstrument: { id: `•• ${b.payment.cardOnFile.last2}`, wallet: b.payment.cardOnFile.mode },
+    paymentInstrument: { id: b.purchaseDetails.paymentInstruments[0]?.paymentInstrumentId ?? "card on file", wallet: b.purchaseDetails.paymentInstruments[0]?.wallet ?? "sandbox" },
+    purchaseDetails: b.purchaseDetails,
     proConsentsToVisitLog: b.visitLogging.proAgreed,
     doorCode: { from: b.doorCode.validFrom, to: b.doorCode.validTo, note: b.doorCode.note },
+  };
+}
+
+type RawSession = {
+  id: string; status: CheckoutSummary["status"];
+  line_items: { item: { id: string; title: string; price: number } }[];
+  totals: { type: string; amount: number }[];
+  links: { type: string; title: string; url: string }[];
+  metadata: { seller: string; merchant_of_record: string; plan_hash: string };
+};
+export function toCheckoutSummary(s: RawSession): CheckoutSummary {
+  const t = (k: string) => s.totals.find((x) => x.type === k)?.amount ?? 0;
+  return {
+    id: s.id, status: s.status,
+    lineItems: s.line_items.map((l) => ({ itemId: l.item.id, title: l.item.title, amount: l.item.price })),
+    totals: { subtotal: t("subtotal"), fees: t("fee"), total: t("total") },
+    links: s.links, seller: s.metadata.seller, merchantOfRecord: s.metadata.merchant_of_record, planHash: s.metadata.plan_hash,
   };
 }
 
@@ -197,9 +244,18 @@ export function createServices(env: Env = envFromProcess()): Services {
       return r.photos;
     },
 
-    async capture(r) {
-      const c = await call<{ capture: { captureId: string; amount: number; status: string; remaining: number } }>(spi("/capture"), { method: "POST", json: r });
-      return { captureId: c.capture.captureId, amount: c.capture.amount, status: c.capture.status, remaining: c.capture.remaining };
+    async prepareCheckout(userId, r) {
+      const res = await call<{ checkout: RawSession }>(`${env.PARTNER_BASE}/partner/checkout/prepare`, { method: "POST", json: r, headers: { Authorization: `Bearer pbp-sandbox-${userId}` } });
+      return toCheckoutSummary(res.checkout);
+    },
+
+    async getCheckout(userId, sessionId) {
+      return toCheckoutSummary(await call<RawSession>(`${env.PARTNER_BASE}/checkout-sessions/${encodeURIComponent(sessionId)}`, { headers: { Authorization: `Bearer pbp-sandbox-${userId}` } }));
+    },
+
+    async warrantyClaim(userId, r) {
+      const res = await call<{ warranty: WarrantyOffer }>(`${env.PARTNER_BASE}/partner/warranty-claims`, { method: "POST", json: r, headers: { Authorization: `Bearer pbp-sandbox-${userId}` } });
+      return res.warranty;
     },
 
     async cameraHistory(deviceId) {

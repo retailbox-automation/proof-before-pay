@@ -74,15 +74,22 @@ function joinAnd(items: string[]): string {
 
 const tradePlural = (trade: string) => (trade === "electrician" ? "electricians" : `${trade}s`);
 
-// ---------- voice lines ----------
+// ---------- voice lines (SPEC §7.5; spoken, so they work without a screen) ----------
+const longDate = (t: number) => new Intl.DateTimeFormat("en-US", { timeZone: TZ, month: "long", day: "numeric" }).format(new Date(t));
+const weekdayLongDate = (t: number) => new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "long", month: "long", day: "numeric" }).format(new Date(t));
+/** "Jan 13, 2027" */
+export const shortDate = (t: number) => new Intl.DateTimeFormat("en-US", { timeZone: TZ, month: "short", day: "numeric", year: "numeric" }).format(new Date(t));
+/** "Mon, Nov 16, 10:00 AM–12:00 PM" */
+export const visitSlot = (start: number, end: number) => `${new Intl.DateTimeFormat("en-US", { timeZone: TZ, weekday: "short", month: "short", day: "numeric" }).format(new Date(start))}, ${clockAmPm(start)}–${clockAmPm(end)}`;
+
 export function voiceFindPros(trade: string, pros: ProView[], recommended: ProView | undefined): string {
-  const out = [`I found ${numberWord(pros.length)} ${tradePlural(trade)} nearby.`];
+  const out = [`${cap(numberWord(pros.length))} ${tradePlural(trade)} nearby.`];
   const excluded = pros.filter((p) => !p.eligible);
   for (const p of excluded.slice(0, 2)) {
     const n = shortName(p.businessName);
     const v = p.license.verdict;
     out.push(
-      v === "not_found" ? `${n}'s license number isn't in Florida's registry, so I left them out.`
+      v === "not_found" ? `${n}'s license isn't in Florida's registry, so I left them out.`
       : v === "inactive" ? `${n}'s license isn't active in Florida's registry, so I left them out.`
       : v === "name_mismatch" ? `${n}'s license is registered to a different name in Florida's registry, so I left them out.`
       : `I couldn't reach Florida's registry to check ${n}, so I left them out for now.`,
@@ -96,20 +103,20 @@ export function voiceFindPros(trade: string, pros: ProView[], recommended: ProVi
 
 export function voiceBookReadBack(proName: string, start: number, end: number, itemCount: number, total: number, proConsents: boolean): string {
   const consent = proConsents
-    ? "They agreed your front door camera logs when they arrive and leave."
-    : "They did not agree to visit logging, so items can't be checked against a visit.";
-  return `${shortName(proName)}, ${spokenSlot(start, end)}, ${numberWord(itemCount)} items for ${spokenAmount(total)} dollars. You pay only for items proven by a photo. ${consent} Should I book it?`;
+    ? "They agreed your front door camera logs arrival and departure."
+    : "They didn't agree to visit logging, so items can't be checked against a visit.";
+  return `${shortName(proName)}, ${spokenSlot(start, end)}: ${numberWord(itemCount)} items, ${spokenAmount(total)} dollars, paid only for items proven by a photo. ${consent} Book it?`;
 }
-export const VOICE_BOOKED = "Booked. The confirmation is on your home card.";
+export const VOICE_BOOKED = "Booked. The confirmation is in your Alexa app.";
 
 export function voiceCancelReadBack(job: Job): string {
   const pol = job.policies.find((p) => p.kind === "cancellation")?.text ?? "Nothing has been charged.";
-  return `Your booking with ${shortName(job.proName)} is ${spokenSlot(job.start, job.end)}, ${spokenAmount(job.total)} dollars. ${pol} Should I cancel it?`;
+  return `Your booking with ${shortName(job.proName)} is ${spokenSlot(job.start, job.end)}, ${spokenAmount(job.total)} dollars. Their cancellation policy: ${pol} Should I cancel it?`;
 }
-export const VOICE_CANCELLED = "Cancelled. Nothing was charged. The confirmation is on your home card.";
+export const VOICE_CANCELLED = "Cancelled. Nothing was charged. The confirmation is in your Alexa app.";
 
 export function voiceReview(job: Job, plan: PaymentPlan): string {
-  if (plan.blockers.length) return `I can't pay anything yet. ${plan.blockers[0]} ${spokenAmount(plan.waits)} waits for your OK.`;
+  if (plan.blockers.length) return `I can't offer any payment yet. ${plan.blockers[0]} ${spokenAmount(plan.waits)} waits for you.`;
   const items = job.scope.items;
   const provenIds = new Set(plan.lines.filter((l) => l.verdict.kind === "proven").map((l) => (l.verdict as { scopeItemId: string }).scopeItemId));
   const issues: string[] = [];
@@ -118,25 +125,22 @@ export function voiceReview(job: Job, plan: PaymentPlan): string {
     if (v.kind === "unproven") {
       const it = items.find((i) => i.id === v.scopeItemId);
       const name = it ? spokenItem(it) : l.line.chargeDescription;
-      issues.push(v.reasons.some((r) => /outside/.test(r)) ? `the ${name} photo was taken outside the visit` : v.reasons.some((r) => /no photo/.test(r)) ? `the ${name} has no photo yet` : `the ${name} isn't proven yet`);
-    } else if (v.kind === "not_in_scope") issues.push(`a ${spokenAmount(l.line.amount)}-dollar ${spokenLine(l.line.chargeDescription)} line wasn't in the scope`);
-    else if (v.kind === "over_scope") issues.push(`${spokenAmount(l.waits)} dollars on the ${spokenLine(l.line.chargeDescription)} line is above the scope`);
+      issues.push(v.reasons.some((r) => /outside/.test(r)) ? `the ${name} photo was taken outside the visit` : v.reasons.some((r) => /no photo/.test(r)) ? `the ${name} has no photo` : `the ${name} isn't proven`);
+    } else if (v.kind === "not_in_scope") issues.push(`a ${spokenAmount(l.line.amount)}-dollar ${spokenLine(l.line.chargeDescription)} wasn't in the scope`);
+    else if (v.kind === "over_scope") issues.push(`${spokenAmount(l.waits)} dollars on the ${spokenLine(l.line.chargeDescription)} is above the scope`);
   }
   const head = provenIds.size === items.length
-    ? `All ${numberWord(items.length)} items are proven by photos taken during the visit.`
-    : `${cap(numberWord(provenIds.size))} of ${numberWord(items.length)} items are proven by photos taken during the visit.`;
+    ? `All ${numberWord(items.length)} items are proven by photos from the visit.`
+    : `${cap(numberWord(provenIds.size))} of ${numberWord(items.length)} items are proven by photos from the visit.`;
   const mid = issues.length ? ` ${cap(joinAnd(issues))}.` : "";
-  const tail = plan.waits > 0 ? ` I can pay ${spokenAmount(plan.payNow)} now. ${spokenAmount(plan.waits)} waits for your OK.` : ` I can pay ${spokenAmount(plan.payNow)} now.`;
+  const tail = plan.waits > 0 ? ` You can pay ${spokenAmount(plan.payNow)} now; ${spokenAmount(plan.waits)} waits for you.` : ` You can pay ${spokenAmount(plan.payNow)} now.`;
   return `${head}${mid}${tail}`;
 }
 
-export function voicePayPrompt(proName: string, amount: number): string {
-  const n = shortName(proName);
-  return `${spokenAmount(amount)} dollars to ${n} with your card on file. Refunds follow ${n}'s policy on the card. Say your four-digit voice code.`;
-}
-export function voicePaid(amount: number, waits: number): string {
-  const rest = waits > 0 ? ` The other ${spokenAmount(waits)} stays unpaid until you say so.` : "";
-  return `Paid ${spokenAmount(amount)} dollars, sandbox. The receipt is on your home card.${rest}`;
+/** Text for Alexa's context after prepare_checkout (the platform speaks the checkout itself). */
+export function voiceCheckoutReady(proName: string, itemCount: number, amount: number, waits: number): string {
+  const rest = waits > 0 ? ` The other ${spokenAmount(waits)} isn't included.` : "";
+  return `Ready for checkout: ${numberWord(itemCount)} proven items, ${spokenAmount(amount)} dollars to ${shortName(proName)}.${rest}`;
 }
 
 export function openItems(job: Job): string[] {
@@ -148,8 +152,8 @@ export function openItems(job: Job): string[] {
     if (v.kind === "unproven") {
       const it = job.scope.items.find((i) => i.id === v.scopeItemId);
       out.push(`the ${it ? spokenItem(it) : l.line.chargeDescription} needs a photo`);
-    } else if (v.kind === "not_in_scope") out.push(`you haven't decided on the ${spokenAmount(l.line.amount)}-dollar ${spokenLine(l.line.chargeDescription)} line`);
-    else if (v.kind === "over_scope") out.push(`you haven't decided on ${spokenAmount(l.waits)} dollars above the scope on the ${spokenLine(l.line.chargeDescription)} line`);
+    } else if (v.kind === "not_in_scope") out.push(`the ${spokenAmount(l.line.amount)}-dollar ${spokenLine(l.line.chargeDescription)} line is your call`);
+    else if (v.kind === "over_scope") out.push(`${spokenAmount(l.waits)} dollars above the scope on the ${spokenLine(l.line.chargeDescription)} line is your call`);
   }
   for (const b of plan.blockers) out.push(b.replace(/\.$/, "").toLowerCase());
   return out;
@@ -166,5 +170,17 @@ export function voiceStatus(job: Job): string {
 }
 
 export function voiceDraft(proName: string): string {
-  return `Here's a draft note to ${shortName(proName)} on your screen. You send it yourself; I don't send messages.`;
+  return `I drafted a note to ${shortName(proName)}. You send it yourself; I don't send messages.`;
+}
+
+export function voiceWarrantyOffer(proName: string, covered: boolean, reason: string, days: number, ends: number): string {
+  const n = shortName(proName);
+  if (!covered) return `That isn't covered: ${reason}. I can draft a note to ${n} instead.`;
+  return `That's covered: ${n}'s ${days}-day labor warranty runs to ${longDate(ends)}. I can book a free return visit with the original scope and photos attached.`;
+}
+export function voiceWarrantyBooked(proName: string, start: number, end: number): string {
+  return `Booked. ${shortName(proName)} comes back ${weekdayLongDate(start)}, ${spokenHourRange(start, end)}, at no charge. The confirmation is in your Alexa app.`;
+}
+function spokenHourRange(start: number, end: number): string {
+  return spokenSlot(start, end).replace(/^\S+ /, "");
 }

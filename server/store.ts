@@ -1,11 +1,11 @@
 // Per-user state: one JSON file per user, written with an atomic rename. Survives a new MCP session
 // and a server restart. All writes go through updateUser(), which is synchronous (load -> mutate ->
 // save in one tick), so a webhook and a tool call in the same process cannot interleave a write.
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { LicenseCheck, PaymentPlan, ScopeOfWork, VisitWindow } from "../src/core/types.ts";
+import type { LicenseCheck, PaymentPlan, Photo, ScopeOfWork, VisitWindow } from "../src/core/types.ts";
 import type { CameraEvent, Policy, Quote } from "../src/app/services.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -22,7 +22,8 @@ export type ProView = {
   eligible: boolean;
 };
 export type StoredEvent = CameraEvent & { receivedAt: number; signature: "verified" | "history-api" };
-export type Payment = { captureId: string; amount: number; at: number; mode: "sandbox"; status: string };
+/** A payment completed by Alexa+ checkout (observed by reading the checkout session; the add-on never takes payment). */
+export type Payment = { checkoutSessionId: string; amount: number; at: number; mode: "sandbox" };
 export type Job = {
   jobId: string;
   title: string;
@@ -47,9 +48,14 @@ export type Job = {
   planAt: number | null;
   licenseAtReview: LicenseCheck | null; // re-checked when the invoice is reviewed
   visitAtReview: VisitWindow | null; // derived from stored camera events at review time
-  paymentPrompt: { amount: number; at: number } | null; // confirm card shown, waiting for the voice code
+  photosAtReview: Photo[] | null;
+  /** Checkout session prepared for the proven items (Alexa+ completes it; we only read its status). */
+  checkout: { sessionId: string; planHash: string; amount: number; waits: number; preparedAt: number } | null;
   payments: Payment[];
-  voiceCodeFailures: number;
+  warranty: {
+    issue: string; scopeItemIds: string[]; covered: boolean; reason: string; laborWarrantyDays: number; warrantyEnds: number;
+    returnVisit: { start: number; end: number }; booked: boolean; offeredAt: number;
+  } | null;
   drafts: { text: string; at: number }[];
 };
 export type UserState = {
@@ -57,8 +63,6 @@ export type UserState = {
   userId: string;
   createdAt: number;
   profile: { zipCode: string; timeZone: string };
-  paymentMethod: { id: string; wallet: string };
-  voiceCode: { salt: string; hash: string }; // sandbox voice purchasing code (hashed); demo default 4719
   doorbell: { deviceId: string; accountId: string };
   lastSearch: { at: number; summary: string; trade: string; pros: ProView[] } | null;
   pendingBooking: { quote: Quote; proName: string; title: string; summary: string; license: LicenseCheck; readBackAt: number } | null;
@@ -68,26 +72,13 @@ export type UserState = {
 };
 
 const USER_ID = /^[A-Za-z0-9_.-]{1,64}$/;
-export const DEMO_VOICE_CODE = "4719";
-
-function hashCode(code: string, salt: string): string {
-  return createHash("sha256").update(`${salt}:${code}`).digest("hex");
-}
-export function checkVoiceCode(state: UserState, code: string): boolean {
-  const a = Buffer.from(hashCode(code, state.voiceCode.salt), "hex");
-  const b = Buffer.from(state.voiceCode.hash, "hex");
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 function fresh(userId: string): UserState {
-  const salt = randomBytes(8).toString("hex");
   return {
     version: 1,
     userId,
     createdAt: Date.now(),
     profile: { zipCode: process.env.DEMO_ZIP ?? "32000", timeZone: "America/New_York" },
-    paymentMethod: { id: "•• 42", wallet: "sandbox" },
-    voiceCode: { salt, hash: hashCode(process.env.DEMO_VOICE_CODE ?? DEMO_VOICE_CODE, salt) },
     // The household's linked front door camera (sandbox defaults = fixtures/demo/scenario.json).
     doorbell: { deviceId: process.env.DOORBELL_DEVICE_ID ?? "sandbox-front-door-01", accountId: process.env.DOORBELL_ACCOUNT_ID ?? "ava1.ring.account.SANDBOX01" },
     lastSearch: null,

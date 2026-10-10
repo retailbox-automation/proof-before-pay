@@ -2,11 +2,14 @@
 // sources are testable on the server); the view only lays it out. Design guide: List / Card patterns,
 // one title, 1-2 fields per row, one action per item, max 5 rows (+N more beyond 3 on the scope card).
 // No brand names in card text: "front door camera", "marketplace", "Florida license registry".
+// No tool names, API codes or internal ids on cards (SPEC §7.3); those live in the host's developer view.
+// The payment card is the PRE-checkout card: its button asks Alexa+ to start checkout ("Pay for this order");
+// Alexa+ owns the PIN, the payment method and the confirmation (SPEC §7.1).
 import type { SourceMode } from "../src/core/types.ts";
 import type { Job, ProView, UserState } from "./store.ts";
-import { cardSlot, checkedAt, clock, clockAmPm, shortName, spokenItem, usd, usdShort, weekdayShort } from "./format.ts";
+import { cardSlot, checkedAt, clock, shortDate, shortName, spokenItem, usd, visitSlot, weekdayShort } from "./format.ts";
 
-export type ViewName = "pros" | "scope" | "payment" | "confirm" | "status" | "draft";
+export type ViewName = "pros" | "scope" | "payment" | "status" | "draft" | "warranty";
 export type RowState = "ok" | "bad" | "struck" | "info" | "pending";
 export type Row = { state: RowState; label: string; detail?: string; source?: string; mode?: SourceMode; kind?: string; action?: { label: string; message: string } };
 export type Field = { label: string; value: string; source?: string; mode?: SourceMode; kind?: string };
@@ -19,6 +22,8 @@ export type CardModel = {
   rows: Row[];
   more?: { label: string; rows: Row[] };
   fields?: Field[];
+  stacks?: { kind: "proven" | "waits"; label: string; count: number; amount: string }[];
+  breakdown?: { label: string; value: string; kind: "subtotal" | "fees" | "total" }[];
   note?: string;
   footer?: string;
   action?: { label: string; message: string };
@@ -59,30 +64,35 @@ export function prosCard(trade: string, pros: ProView[]): CardModel {
   };
 }
 
-type ScopeLike = { title: string; proName: string; start: number; end: number; total: number; items: { id: string; description: string; price: number; proof: string[] }[]; proConsents: boolean; door: { from: number; to: number }; status: "pending" | "booked" | "cancelled"; ref?: string };
+type ScopeLike = { title: string; proName: string; start: number; end: number; total: number; items: { id: string; description: string; price: number; proof: string[] }[]; proConsents: boolean; door: { from: number; to: number }; cancellation: string; status: "pending" | "booked" | "cancelled" };
 
 export function scopeCard(s: ScopeLike): CardModel {
   const itemRow = (i: ScopeLike["items"][number]): Row => ({ state: "info", kind: "item", label: i.description, detail: `${usd(i.price)} · proof: ${i.proof.join(" + ")}` });
   const doorFrom = s.door.from, doorTo = s.door.to;
-  const statusText = s.status === "pending" ? "not booked yet" : s.status === "booked" ? `booked · ${s.ref}` : "cancelled · nothing charged";
+  const statusText = s.status === "pending" ? "not booked yet" : s.status === "booked" ? "booked" : "cancelled · nothing charged";
   return {
     view: "scope",
     layout: "card",
     title: `${s.title} · ${cardSlot(s.start, s.end)}`,
-    subtitle: `${s.proName} · ${usd(s.total)} · ${statusText}`,
+    subtitle: `${s.proName} · estimate ${usd(s.total)}, to be paid after the work is proven · ${statusText}`,
     rows: s.items.slice(0, 3).map(itemRow),
     more: s.items.length > 3 ? { label: `+${s.items.length - 3} more`, rows: s.items.slice(3).map(itemRow) } : undefined,
     fields: [
       { label: "Proof", value: "photo per item", kind: "proof" },
       { label: "Visit log", value: s.proConsents ? "pro agreed ✓ — arrive/leave only, no video kept" : "pro did not agree — no visit log", source: "front door camera", mode: "sandbox", kind: "consent" },
       { label: "Door code", value: `${weekdayShort(doorFrom)} ${clock(doorFrom)}–${clock(doorTo)} · simulated (no lock API)`, mode: "simulated", kind: "door" },
+      { label: "Cancel", value: s.cancellation, source: "pro's policy on the marketplace", mode: "sandbox", kind: "cancellation" },
     ],
     action: s.status === "pending" ? { label: "Book it", message: "Yes." } : s.status === "booked" ? { label: "Cancel booking", message: "Cancel the booking." } : undefined,
   };
 }
 
 export function scopeCardFromJob(job: Job, status: "booked" | "cancelled"): CardModel {
-  return scopeCard({ title: job.title, proName: job.proName, start: job.start, end: job.end, total: job.total, items: job.scope.items, proConsents: job.scope.visitLoggingConsent.byPro, door: job.doorCode, status, ref: job.partnerBookingId });
+  return scopeCard({ title: job.title, proName: job.proName, start: job.start, end: job.end, total: job.total, items: job.scope.items, proConsents: job.scope.visitLoggingConsent.byPro, door: job.doorCode, cancellation: cancellationOf(job), status });
+}
+
+export function cancellationOf(job: { policies: { kind: string; text: string }[] }): string {
+  return job.policies.find((p) => p.kind === "cancellation")?.text ?? "no cancellation policy given";
 }
 
 export function paymentCard(job: Job): CardModel {
@@ -104,7 +114,9 @@ export function paymentCard(job: Job): CardModel {
     const vd = l.verdict;
     if (vd.kind === "unproven") {
       const it = job.scope.items.find((i) => i.id === vd.scopeItemId);
-      bad.push({ state: "bad", kind: "not-confirmed", label: `Not confirmed: ${it ? spokenItem(it) : l.line.chargeDescription}`, detail: vd.reasons.join(", "), source: "marketplace photos", mode: "sandbox" });
+      // Plain words only: reconcile's reasons are for the developer view (they can carry scope ids).
+      const why = vd.reasons.some((r) => /outside/i.test(r)) ? "photo taken outside the visit" : vd.reasons.some((r) => /no photo/i.test(r)) ? "no photo" : vd.reasons.some((r) => /visit/i.test(r)) ? "no logged visit" : "not proven";
+      bad.push({ state: "bad", kind: "not-confirmed", label: `Not confirmed: ${it ? spokenItem(it) : l.line.chargeDescription}`, detail: why, source: "marketplace photos", mode: "sandbox" });
     } else if (vd.kind === "not_in_scope") {
       bad.push({ state: "bad", kind: "not-confirmed", label: `Not in scope: "${l.line.chargeDescription}" ${usd(l.line.amount)}`, detail: "not in the agreed scope", source: "marketplace invoice", mode: "sandbox" });
     } else if (vd.kind === "over_scope") {
@@ -112,19 +124,32 @@ export function paymentCard(job: Job): CardModel {
     }
   }
   const room = 5 - rows.length;
+  const waitsCount = plan.lines.filter((l) => l.waits > 0).length;
+  const provenCount = plan.lines.filter((l) => l.payNow > 0).length;
   const shown = bad.length > room ? bad.slice(0, room - 1) : bad;
   rows.push(...shown);
   const hidden = bad.length - shown.length;
+  const paid = job.payments.reduce((s, p) => s + p.amount, 0);
   return {
     view: "payment",
     layout: "card",
     title: `${job.title} · invoice ${usd(plan.invoiceTotal)}`,
-    subtitle: `${job.proName} · checked by reconcile-v1 (fixed rules, no model)`,
+    subtitle: `${job.proName} · checked with fixed rules, no model`,
     hero: { text: `Pay now ${usd(plan.payNow)} · Waits ${usd(plan.waits)}`, kind: "split" },
+    stacks: [
+      { kind: "proven", label: "Proven · pay now", count: provenCount, amount: usd(plan.payNow) },
+      { kind: "waits", label: "Waits for you", count: waitsCount, amount: usd(plan.waits) },
+    ],
     rows,
     more: hidden > 0 ? { label: `+${hidden} more`, rows: bad.slice(shown.length) } : undefined,
-    footer: "Sandbox · Pay proven items now, the rest after you confirm.",
-    action: plan.payNow > 0 && !job.payments.length ? { label: `Pay ${usdShort(plan.payNow)}`, message: "Pay the proven part." } : undefined,
+    breakdown: [
+      { label: "Subtotal", value: usd(plan.payNow), kind: "subtotal" },
+      { label: "Fees", value: usd(0), kind: "fees" },
+      { label: "Total", value: usd(plan.payNow), kind: "total" },
+    ],
+    footer: paid ? `Sandbox · Paid ${usd(paid)} through Alexa+ checkout. The rest waits for you.` : "Sandbox · Pay proven items now, the rest after you confirm. Alexa+ completes the payment.",
+    // Touch path to Alexa+ checkout: a ui/message with the purchase intent, never tools/call (SPEC §7.1).
+    action: plan.payNow > 0 && !paid ? { label: `Pay ${usd(plan.payNow)}`, message: "Pay for this order" } : undefined,
   };
 }
 
@@ -133,51 +158,12 @@ function visitOf(job: Job): { arrivedAt: number | null; leftAt: number | null; m
   return { arrivedAt: v?.arrivedAt ?? null, leftAt: v?.leftAt ?? null, mode: v?.source.mode ?? "fixture" };
 }
 
-export function confirmCard(job: Job, user: UserState, amount: number, prompt: string | null): CardModel {
-  const refund = job.policies.find((p) => p.kind === "refund")?.text ?? "No refund policy given.";
-  const cancel = job.policies.find((p) => p.kind === "cancellation")?.text ?? "";
-  return {
-    view: "confirm",
-    layout: "card",
-    title: "Confirm payment",
-    subtitle: `${job.title} · proven items only`,
-    hero: { text: usd(amount), kind: "amount" },
-    rows: [
-      { state: "info", kind: "payee", label: `To ${job.proName}`, detail: `waits ${usd(job.plan ? job.plan.waits : 0)} for your OK` },
-      { state: "info", kind: "card", label: `Card on file ${user.paymentMethod.id} (sandbox)`, detail: "no new payment methods" },
-      { state: "info", kind: "policy", label: "Refunds and cancellation", detail: `${refund}${cancel ? ` ${cancel}` : ""}` },
-      { state: "pending", kind: "voice-code", label: "Voice code required", detail: prompt ?? "say your four-digit voice code" },
-    ],
-    footer: "Sandbox · no real money moves.",
-  };
-}
-
-export function receiptCard(job: Job, user: UserState): CardModel {
-  const p = job.payments[job.payments.length - 1];
-  const waits = job.plan ? job.plan.waits : 0;
-  const refund = job.policies.find((x) => x.kind === "refund")?.text ?? "";
-  return {
-    view: "confirm",
-    layout: "card",
-    title: "Receipt",
-    subtitle: `${job.title} · ${job.proName}`,
-    hero: { text: `Paid ${usd(p.amount)}`, kind: "paid" },
-    rows: [
-      { state: "ok", kind: "receipt", label: `Receipt ${p.captureId}`, detail: `${weekdayShort(p.at)} ${clockAmPm(p.at)} · partial capture`, source: "marketplace payments", mode: "sandbox" },
-      { state: "info", kind: "card", label: `Card on file ${user.paymentMethod.id} (sandbox)` },
-      ...(waits > 0 ? [{ state: "pending" as const, kind: "waits", label: `Unpaid ${usd(waits)}`, detail: "waits until you say so" }] : []),
-      { state: "info", kind: "refund", label: "To cancel or get a refund", detail: `contact ${job.proName}. ${refund}` },
-    ],
-    footer: "Sandbox · no real money moved.",
-  };
-}
-
 export function statusCard(job: Job, open: string[]): CardModel {
   const rows: Row[] = [];
   const paid = job.payments.reduce((s, p) => s + p.amount, 0);
   if (job.status === "CANCELLED") rows.push({ state: "info", kind: "cancelled", label: "Booking cancelled", detail: "nothing charged" });
   else if (!job.plan) rows.push({ state: "pending", kind: "booked", label: `Booked ${cardSlot(job.start, job.end)}`, detail: "invoice not checked yet" });
-  if (paid) rows.push({ state: "ok", kind: "paid", label: `Paid ${usd(paid)}`, detail: `receipt ${job.payments[job.payments.length - 1].captureId}`, source: "marketplace payments", mode: "sandbox" });
+  if (paid) rows.push({ state: "ok", kind: "paid", label: `Paid ${usd(paid)}`, detail: "proven items, through Alexa+ checkout", source: "Alexa+ checkout (simulated)", mode: "simulated" });
   if (job.plan) {
     for (const l of job.plan.lines) {
       const v = l.verdict;
@@ -193,7 +179,7 @@ export function statusCard(job: Job, open: string[]): CardModel {
     view: "status",
     layout: "card",
     title: `${job.title} · ${shortName(job.proName)}`,
-    subtitle: job.plan ? `Pay now was ${usd(job.plan.payNow)} · waits ${usd(job.plan.waits)}` : job.status === "CANCELLED" ? "cancelled" : `booking ${job.partnerBookingId}`,
+    subtitle: job.plan ? `Proven ${usd(job.plan.payNow)} · waits ${usd(job.plan.waits)}` : job.status === "CANCELLED" ? "cancelled" : `booked ${cardSlot(job.start, job.end)}`,
     rows: rows.slice(0, 5),
     footer: open.length ? `${open.length} open item${open.length === 1 ? "" : "s"} · saved on your account` : "Nothing open",
     action: open.length && job.status !== "CANCELLED" ? { label: "Draft a note", message: "Yes, draft it." } : undefined,
@@ -209,5 +195,30 @@ export function draftCard(job: Job, text: string): CardModel {
     rows: [],
     note: text,
     footer: "You send it from your own messages. Proof Before Pay never sends it.",
+  };
+}
+
+export function warrantyCard(job: Job): CardModel {
+  const w = job.warranty!;
+  const photos = (job.photosAtReview ?? []).filter((p) => p.scopeItemId && w.scopeItemIds.includes(p.scopeItemId));
+  const names = w.scopeItemIds.map((id) => job.scope.items.find((i) => i.id === id)).filter(Boolean).map((i) => spokenItem(i!));
+  const v = job.visitAtReview;
+  const rows: Row[] = [
+    w.covered
+      ? { state: "ok", kind: "coverage", label: `Covered: ${w.laborWarrantyDays}-day labor warranty`, detail: `to ${shortDate(w.warrantyEnds)} · from the ${shortDate(job.end).replace(/, \d{4}$/, "")} job`, source: "pro's terms on the marketplace", mode: "sandbox" }
+      : { state: "bad", kind: "coverage", label: "Not covered", detail: w.reason, source: "pro's terms on the marketplace", mode: "sandbox" },
+  ];
+  if (w.covered) rows.push({ state: w.booked ? "ok" : "pending", kind: "return-visit", label: `Return visit ${visitSlot(w.returnVisit.start, w.returnVisit.end)}`, detail: `${usd(0)} · ${w.booked ? "booked" : "not booked yet"}`, source: "marketplace booking", mode: "sandbox" });
+  rows.push({ state: "info", kind: "evidence", label: `Original scope: ${job.scope.items.length} items`, detail: names.length ? `this issue: ${names.join(", ")}` : "agreed at booking", source: "your saved job", mode: "sandbox" });
+  rows.push({ state: "info", kind: "evidence", label: `${photos.length} photo${photos.length === 1 ? "" : "s"} from the visit`, detail: names.join(", ") || "none tagged to this issue", source: "marketplace photos", mode: "sandbox" });
+  if (v?.arrivedAt != null && v.leftAt != null) rows.push({ state: "info", kind: "evidence", label: `Visit log ${shortDate(v.arrivedAt).replace(/, \d{4}$/, "")}, ${clock(v.arrivedAt)}–${clock(v.leftAt)}`, detail: "arrive/leave only", source: "front door camera", mode: v.source.mode });
+  return {
+    view: "warranty",
+    layout: "card",
+    title: `Labor warranty · ${job.title}`,
+    subtitle: `${job.proName} · "${w.issue}"`,
+    rows: rows.slice(0, 5),
+    footer: w.covered ? "Sandbox · the scope, photos and visit log go with the request." : "Sandbox",
+    action: w.covered && !w.booked ? { label: "Book return visit", message: "Yes, book it." } : undefined,
   };
 }

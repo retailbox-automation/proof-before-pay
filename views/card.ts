@@ -10,6 +10,8 @@ type Field = { label: string; value: string; source?: string; mode?: Mode; kind?
 type Card = {
   view: string; layout: string; title: string; subtitle?: string; hero?: { text: string; kind: string };
   rows: Row[]; more?: { label: string; rows: Row[] }; fields?: Field[]; note?: string; footer?: string;
+  stacks?: { kind: string; label: string; count: number; amount: string }[];
+  breakdown?: { label: string; value: string; kind: string }[];
   action?: { label: string; message: string };
 };
 
@@ -71,6 +73,15 @@ function render(card: Card): void {
   if (card.subtitle) head.append(el("p", { class: "subtitle", id: "subtitle" }, card.subtitle));
   art.append(head);
   if (card.hero) art.append(el("div", { class: "hero", id: "hero", "data-kind": card.hero.kind }, card.hero.text));
+  if (card.stacks?.length) {
+    const st = el("div", { class: "stacks", id: "stacks" });
+    for (const x of card.stacks) {
+      const d = el("div", { class: "stack", "data-kind": x.kind });
+      d.append(el("div", { class: "stack-label" }, x.label), el("div", { class: "stack-amount" }, x.amount), el("div", { class: "stack-count" }, `${x.count} item${x.count === 1 ? "" : "s"}`));
+      st.append(d);
+    }
+    art.append(st);
+  }
   if (card.rows.length) {
     const ul = el("ul", { class: "rows", id: "rows" });
     for (const r of card.rows) ul.append(rowEl(r));
@@ -91,6 +102,15 @@ function render(card: Card): void {
       const bd = badge(f.mode);
       if (bd) dd.append(bd);
       d.append(dd);
+      dl.append(d);
+    }
+    art.append(dl);
+  }
+  if (card.breakdown?.length) {
+    const dl = el("dl", { class: "breakdown", id: "breakdown" });
+    for (const b of card.breakdown) {
+      const d = el("div", { class: "line", "data-kind": b.kind });
+      d.append(el("dt", {}, b.label), el("dd", {}, b.value));
       dl.append(d);
     }
     art.append(dl);
