@@ -3,6 +3,12 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildSkill, TEXT, resolvePro } from "../src/handler.ts";
 import { createProofpay, type Proofpay, type ToolOutcome } from "../src/proofpay.ts";
 import { aplDocument, DOCS, APL_VERSION } from "../src/apl.ts";
@@ -246,4 +252,25 @@ test("server down: error line, no crash", async () => {
   const r = await sk.invoke(envelope({ intent: "StatusIntent", sessionId: "down" }));
   assert.equal(speech(r), TEXT.error);
   await pp.close();
+});
+
+test("Lambda bundle (esbuild, cjs, target node16) answers through the same live server", async () => {
+  const app = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+  const out = mkdtempSync(join(tmpdir(), "pbp-skill-bundle-"));
+  try {
+    const file = join(out, "index.js");
+    execFileSync(join(app, "node_modules", ".bin", "esbuild"), ["skill/src/lambda.ts", "--bundle", "--platform=node", "--format=cjs", "--target=node16", "--log-level=error", `--outfile=${file}`], { cwd: app, stdio: "pipe" });
+    process.env.MCP_URL = stack.mcp.url;
+    process.env.PBP_TOKEN = `pbp-sandbox-bundle-${Date.now().toString(36)}`;
+    const { handler } = createRequire(import.meta.url)(file);
+    const r = await handler(envelope({ sessionId: "bundle", intent: "FindProsIntent" }));
+    assert.match(speech(r), /^I found three electricians nearby\./);
+    assert.equal(apl(r).token, "pbp-pros");
+    assert.equal(apl(r).document.version, "2024.3");
+    const end = await handler(envelope({ sessionId: "bundle", intent: "AMAZON.StopIntent" }));
+    assert.equal(end.response.shouldEndSession, true);
+  } finally {
+    delete process.env.MCP_URL; delete process.env.PBP_TOKEN;
+    rmSync(out, { recursive: true, force: true });
+  }
 });

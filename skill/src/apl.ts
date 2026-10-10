@@ -1,19 +1,20 @@
 // APL documents + datasources for the Echo Show. The proofpay server already decides WHAT a card says
 // (structuredContent.card, the same model its MCP Apps views render); here we only map it onto APL.
 // Customer surface only: no tool names, ids or mode badges (SPEC §7.3) - sources are named in plain words.
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import pros from "../apl/pros.json" with { type: "json" };
+import payment from "../apl/payment.json" with { type: "json" };
+import status from "../apl/status.json" with { type: "json" };
+import warranty from "../apl/warranty.json" with { type: "json" };
+import card from "../apl/card.json" with { type: "json" };
 
-const APL_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "apl");
+// Static JSON imports (not readFileSync) so the Lambda bundle carries the documents.
 export const APL_VERSION = "2024.3";
-export const DOCS = ["pros", "payment", "status", "warranty", "card"] as const;
-export type DocName = (typeof DOCS)[number];
+const DOC_MAP = { pros, payment, status, warranty, card } as const;
+export const DOCS = Object.keys(DOC_MAP) as DocName[];
+export type DocName = keyof typeof DOC_MAP;
 
-const cache = new Map<DocName, unknown>();
 export function aplDocument(name: DocName): any {
-  if (!cache.has(name)) cache.set(name, JSON.parse(readFileSync(join(APL_DIR, `${name}.json`), "utf8")));
-  return cache.get(name);
+  return DOC_MAP[name];
 }
 
 /** Which APL document shows a tool result. Unknown views (a tool added later) fall back to the generic card. */
