@@ -59,6 +59,7 @@
   --d-todo: #D3D9E9;
   --d-link: #A7CCF8;
   --d-icon-line: #E2E6ED;
+  --d-btn-text: #FFFFFF; /* filled buttons keep white text in both themes */
 }
 /* Light theme from the same tokens (design guide asks for both). */
 :root[data-theme="light"] {
@@ -129,11 +130,11 @@ ul { list-style: none; }
 .src, .detail { display: block; margin-top: calc(2 * var(--u)); font-size: calc(16 * var(--u)); line-height: calc(22 * var(--u)); color: var(--d-sub); }
 .money { display: block; margin-top: calc(4 * var(--u)); font-size: calc(19.5 * var(--u)); line-height: calc(24 * var(--u)); color: var(--d-sub); }
 .row[data-state="struck"] .what { color: var(--d-dim); }
-.row button { flex: none; height: calc(54 * var(--u)); padding: 0 calc(26 * var(--u)); border: 0; border-radius: calc(11 * var(--u)); background: var(--d-btn-row); color: var(--d-text); font: 600 calc(21 * var(--u))/1 var(--pbp-font); cursor: pointer; }
+.row button { flex: none; height: calc(54 * var(--u)); padding: 0 calc(26 * var(--u)); border: 0; border-radius: calc(11 * var(--u)); background: var(--d-btn-row); color: var(--d-btn-text); font: 600 calc(21 * var(--u))/1 var(--pbp-font); cursor: pointer; }
 .more { align-self: flex-start; margin-top: calc(8 * var(--u)); padding: calc(6 * var(--u)) calc(16 * var(--u)); border: 1px solid var(--d-row-line); border-radius: 999px; background: transparent; color: var(--d-sub); font: 500 calc(18 * var(--u))/1.2 var(--pbp-font); cursor: pointer; }
 
 /* ---------- buttons ---------- */
-.action { display: block; width: 100%; height: calc(68 * var(--u)); margin-top: calc(16 * var(--u)); border: 0; border-radius: calc(18.5 * var(--u)); background: var(--d-btn); color: var(--d-text); font: 700 calc(27 * var(--u))/1 var(--pbp-font); cursor: pointer; white-space: nowrap; }
+.action { display: block; width: 100%; height: calc(68 * var(--u)); margin-top: calc(16 * var(--u)); border: 0; border-radius: calc(18.5 * var(--u)); background: var(--d-btn); color: var(--d-btn-text); font: 700 calc(27 * var(--u))/1 var(--pbp-font); cursor: pointer; white-space: nowrap; }
 .action.final { height: calc(63 * var(--u)); border: 1px solid var(--d-btn-final-line); border-radius: calc(19 * var(--u)); background: var(--d-btn-final); font-weight: 600; font-size: calc(23 * var(--u)); }
 .action.text { background: transparent; border: 1px solid var(--d-row-line); color: var(--d-label); font-weight: 600; }
 button:disabled { opacity: .55; cursor: default; }

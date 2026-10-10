@@ -7,7 +7,9 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { BEAT_1_4, SPEC_LINES, TOOL_OR_ID, type Row } from "./protocol.ts";
 
-/** Runs inside a page or frame: fit, local font, DOM checks (clipped text, wrapped amounts) and mark rules.
+/** Runs inside a page or frame: fit, local font, DOM checks and mark rules.
+ *  DOM checks = the image-first-ui dom_check.js rules (numbers wrapped onto 2+ lines, text clipped by its own box,
+ *  overlapping card-like siblings) plus a stricter one: a short text with an amount must not wrap.
  *  Allowed SVG: data-mark product (our shield), status (✓ ! ○ icons), icon (generic: star, card, doc, calendar, wave).
  *  Rejected: <img>, unlabelled SVG, brand words in titles/labels, ring-like marks (a stroked circle in a saturated blue/cyan). */
 export const MARKS_AND_FIT = (rootEl?: Element | HTMLElement) => {
@@ -32,18 +34,42 @@ export const MARKS_AND_FIT = (rootEl?: Element | HTMLElement) => {
   }
   const clipped: string[] = [];
   const wrappedNumbers: string[] = [];
-  for (const e of root.querySelectorAll("*")) {
-    const he = e as HTMLElement;
-    if (!he.childElementCount && he.textContent?.trim() && he.scrollWidth > he.clientWidth + 1 && getComputedStyle(he).overflow !== "visible") clipped.push(he.textContent.trim().slice(0, 30));
-    if (!he.childElementCount && /\$\d/.test(he.textContent ?? "") && he.getClientRects().length > 0) {
-      const r = document.createRange(); r.selectNodeContents(he);
-      const lines = new Set([...r.getClientRects()].map((x) => Math.round(x.top)));
-      const money = (he.textContent ?? "").match(/\$[\d,]+(\.\d\d)?/g) ?? [];
-      if (lines.size > 1 && money.some((m) => m.length > 0) && (he.textContent ?? "").trim().length < 40) wrappedNumbers.push(he.textContent!.trim().slice(0, 30));
+  const numRe = /^[+\-−]?[\d\s.,%$KМMk▲▼↑↓→]+(USDT|USD|%)?$/;
+  const leaves = [...root.querySelectorAll("*")].filter((e) => e.children.length === 0 && (e.textContent ?? "").trim()) as HTMLElement[];
+  for (const he of leaves) {
+    const t = (he.textContent ?? "").trim();
+    const cs = getComputedStyle(he);
+    if ((cs.overflow !== "visible" || cs.textOverflow === "ellipsis" || cs.whiteSpace === "nowrap") && he.scrollWidth > he.clientWidth + 1) clipped.push(t.slice(0, 30));
+    const r = document.createRange(); r.selectNodeContents(he);
+    const lines = new Set([...r.getClientRects()].map((x) => Math.round(x.top))).size;
+    if (lines > 1 && ((numRe.test(t) && t.length <= 20) || (/\$\d/.test(t) && t.length < 40))) wrappedNumbers.push(t.slice(0, 30));
+  }
+  // Visible box: the element's rect cut by every scrolling/clipping ancestor (a chip scrolled out of its list is not on top of anything).
+  const vis = (e: Element) => {
+    const r = e.getBoundingClientRect();
+    let L = r.left, T = r.top, R = r.right, B = r.bottom;
+    for (let p = e.parentElement; p; p = p.parentElement) {
+      const cs = getComputedStyle(p);
+      if (cs.overflowX !== "visible" || cs.overflowY !== "visible") { const q = p.getBoundingClientRect(); L = Math.max(L, q.left); T = Math.max(T, q.top); R = Math.min(R, q.right); B = Math.min(B, q.bottom); }
     }
+    return { left: L, top: T, right: R, bottom: B, width: R - L, height: B - T };
+  };
+  const cards = [...root.querySelectorAll("*")].filter((e) => {
+    const cs = getComputedStyle(e); const rc = vis(e);
+    return parseFloat(cs.borderTopLeftRadius) >= 8 && cs.backgroundColor !== "rgba(0, 0, 0, 0)" && rc.width > 120 && rc.height > 60;
+  });
+  const label = (e: Element) => (e.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 16);
+  const overlaps: string[] = [];
+  for (let i = 0; i < cards.length; i++) for (let j = i + 1; j < cards.length; j++) {
+    const a = cards[i], c = cards[j];
+    if (a.contains(c) || c.contains(a)) continue;
+    const x = vis(a), y = vis(c);
+    const w = Math.min(x.right, y.right) - Math.max(x.left, y.left), h = Math.min(x.bottom, y.bottom) - Math.max(x.top, y.top);
+    if (w > 4 && h > 4) overlaps.push(`${label(a)}×${label(c)}`);
   }
   const b = document.body;
-  return { zoom: Number(b.dataset.zoom), overflow: document.documentElement.scrollHeight - innerHeight, vh: innerHeight, bad, svgs: svgs.length, inter: document.fonts ? document.fonts.check("16px Inter") : false, clipped, wrappedNumbers };
+  return { zoom: Number(b.dataset.zoom), overflow: document.documentElement.scrollHeight - innerHeight, vh: innerHeight, bad, svgs: svgs.length, inter: document.fonts ? document.fonts.check("16px Inter") : false, clipped, wrappedNumbers, overlaps,
+    page: [document.documentElement.scrollWidth, document.documentElement.scrollHeight] };
 };
 
 // Plain-text "Alexa+" / "Echo Show" are allowed (SPEC §7.4); third-party brand names are not.
@@ -65,13 +91,14 @@ export async function runBrowserChecks(opts: { hostUrl: string; simBase: string;
   const fits: string[] = [];
   const shots: string[] = [];
   const mcpBodies: { method: string; tool: string | null; body: string; t: number }[] = [];
-  const fontReqs: { url: string; status: number }[] = [];
+  const fontReqs: { url: string; status: number; card: boolean }[] = [];
   const remoteFont: string[] = [];
+  const pageDom: string[] = [];
   try {
-    const page = await browser.newPage({ viewport: { width: 1760, height: 1150 } });
+    const page = await browser.newPage({ viewport: { width: 1920, height: 1200 }, colorScheme: "dark" });
     page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text().slice(0, 200)); });
     page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${String(e).slice(0, 200)}`));
-    page.on("response", (r) => { if (/\.woff2(\?|$)/.test(r.url())) fontReqs.push({ url: r.url(), status: r.status() }); });
+    page.on("response", (r) => { if (/\.woff2(\?|$)/.test(r.url())) fontReqs.push({ url: r.url(), status: r.status(), card: r.frame() !== page.mainFrame() }); });
     page.on("request", (r) => { if (/fonts\.googleapis\.com|fonts\.gstatic\.com/.test(r.url())) remoteFont.push(r.url()); });
     page.on("request", (r) => {
       if (!r.url().startsWith(opts.mcpUrl)) return;
@@ -99,12 +126,20 @@ export async function runBrowserChecks(opts: { hostUrl: string; simBase: string;
       cardTexts.push(`${viewName}: ${await view().locator("#card").innerText()}`);
       await view().locator("body").evaluate(() => document.fonts.ready);
       const f = await view().locator("body").evaluate(MARKS_AND_FIT);
-      fits.push(`${viewName}@${f.zoom}:${f.vh}px${f.overflow > 1 || f.vh > 590 ? `!overflow=${f.overflow}` : ""}${f.bad.length ? `!marks=${f.bad.join("/")}` : ""}${f.inter ? "" : "!font"}${f.clipped.length ? `!clipped=${f.clipped.join("/")}` : ""}${f.wrappedNumbers.length ? `!wrapped=${f.wrappedNumbers.join("/")}` : ""}`);
+      fits.push(`${viewName}@${f.zoom}:${f.vh}px${f.overflow > 1 || f.vh > 590 ? `!overflow=${f.overflow}` : ""}${f.bad.length ? `!marks=${f.bad.join("/")}` : ""}${f.inter ? "" : "!font"}${f.clipped.length ? `!clipped=${f.clipped.join("/")}` : ""}${f.wrappedNumbers.length ? `!wrapped=${f.wrappedNumbers.join("/")}` : ""}${f.overlaps.length ? `!overlaps=${f.overlaps.join("/")}` : ""}`);
     }
+    /** Page at 1920×1200 plus the device screen at its true 1280×800 frame; dom_check rules on the host page. */
     async function shot(name: string): Promise<void> {
       const p = join(opts.screensDir, `${name}.png`);
-      await page.locator("#device").screenshot({ path: p });
-      shots.push(p);
+      await page.screenshot({ path: p });
+      const d = await page.evaluate(`(${MARKS_AND_FIT.toString()})(document.body)`) as { clipped: string[]; wrappedNumbers: string[]; overlaps: string[]; page: number[] };
+      const fit = await page.evaluate(() => ["screen-request", "screen-reply"].map((id) => document.getElementById(id)!.dataset.fit ?? "-"));
+      pageDom.push(`${name}:${d.page.join("×")} w${d.wrappedNumbers.length} c${d.clipped.length} o${d.overlaps.length} fit ${fit.join("/")}${d.clipped.length ? `!clipped=${d.clipped.join("/")}` : ""}${d.wrappedNumbers.length ? `!wrapped=${d.wrappedNumbers.join("/")}` : ""}${d.overlaps.length ? `!overlaps=${d.overlaps.join("/")}` : ""}${fit.includes("overflow") ? "!fit" : ""}${d.page.join("×") !== "1920×1200" ? "!page" : ""}`);
+      await page.evaluate(() => { document.body.dataset.frame = "1"; });
+      const f = join(opts.screensDir, `${name}-frame.png`);
+      await page.screenshot({ path: f, clip: { x: 0, y: 0, width: 1280, height: 800 } });
+      await page.evaluate(() => { document.body.dataset.frame = "0"; });
+      shots.push(p, f);
     }
     const rowsOf = (state: string) => view().locator(`#rows .row[data-state='${state}']`);
 
@@ -200,26 +235,26 @@ export async function runBrowserChecks(opts: { hostUrl: string; simBase: string;
         insideIframe: !!document.querySelector("#card iframe")?.contains(l), inDevice: !!document.getElementById("device")?.contains(l), visible: !l.hidden,
         head: document.getElementById("checkout-head")!.textContent, seller: document.getElementById("checkout-seller")!.textContent,
         items: [...document.querySelectorAll("#checkout-items li")].map((x) => x.textContent), totals: [...document.querySelectorAll("#checkout-totals > div")].map((x) => x.textContent),
-        card: document.getElementById("checkout-card")!.textContent, refund: document.getElementById("checkout-refund")!.textContent,
+        card: document.getElementById("checkout-card")!.textContent, chip: document.querySelector("#checkout-layer .pay-row .sheet-chip")?.textContent, refund: document.getElementById("checkout-refund")!.textContent,
         dimmed: document.getElementById("card")!.classList.contains("dimmed"),
       };
     });
     await shot("beat-4");
     add("B8", "beat 4: tap -> ui/message 'Pay for this order' -> host draws 'Alexa+ checkout · simulated' outside the add-on iframe, over the dimmed card",
-      "tap turn; layer in the device, not in the iframe; 5 items; Subtotal/Fees/Total; Visa ending 4242 · sandbox; refund link title; SPEC prompt",
-      `source=${t4a.source} ${t4a.speech === SPEC_LINES.checkoutPrompt ? "=" : "≠"} SPEC | "${layer.head}" | ${layer.items.length} items | ${layer.totals.join(", ")} | "${layer.card}" | "${layer.refund}" | dimmed=${layer.dimmed} iframe=${layer.insideIframe}`,
+      "tap turn; layer in the device, not in the iframe; 5 items; Subtotal/Fees/Total; 'Visa ending 4242' + 'sandbox' chip; refund link title; SPEC prompt",
+      `source=${t4a.source} ${t4a.speech === SPEC_LINES.checkoutPrompt ? "=" : "≠"} SPEC | "${layer.head}" | ${layer.items.length} items | ${layer.totals.join(", ")} | "${layer.card}" [${layer.chip}] | "${layer.refund}" | dimmed=${layer.dimmed} iframe=${layer.insideIframe}`,
       t4a.source === "tap" && t4a.speech === SPEC_LINES.checkoutPrompt && layer.visible && layer.inDevice && !layer.insideIframe && layer.head === "Alexa+ checkout · simulated" && layer.items.length === 5 &&
-      layer.totals.join("|") === "Subtotal$1,050.00|Fees$0.00|Total$1,050.00" && layer.card === "Visa ending 4242 · sandbox" && layer.refund === "Refund policy · Bright Current Electric" && layer.dimmed);
+      layer.totals.join("|") === "Subtotal$1,050.00|Fees$0.00|Total$1,050.00" && layer.card === "Visa ending 4242" && layer.chip === "sandbox" && layer.refund === "Refund policy · Bright Current Electric" && layer.dimmed);
     const t4b = await say("four seven one nine");
     await page.waitForSelector("#checkout-layer[data-state='confirmed']");
     const status4 = await page.locator("#checkout-status").innerText();
-    const subUser = await page.locator("#sub-user").innerText();
+    const subUser = await page.locator("#screen-request").innerText();
     const transcriptText = await page.locator("#transcript").innerText();
     const ch4 = await charges();
     await shot("beat-4-confirmed");
-    add("B9", "voice code checked by the platform layer, masked everywhere; 'Order confirmed'; one charge of $1,050.00", `SPEC line; "You: ••••"; digits never shown; 1 new charge 105000`,
-      `${t4b.speech === SPEC_LINES.checkoutDone ? "=" : "≠"} SPEC | "${status4}" | sub="${subUser}" | utterance="${t4b.utterance}" | digits shown=${/4719|four seven one nine/i.test(transcriptText)} | charges ${charges0}->${ch4.length} (${ch4.at(-1)?.amount})`,
-      t4b.speech === SPEC_LINES.checkoutDone && status4 === "Order confirmed" && subUser === "You: ••••" && t4b.utterance === "••••" && !/4719|four seven one nine/i.test(transcriptText) && ch4.length === charges0 + 1 && ch4.at(-1)?.amount === 105000);
+    add("B9", "voice code checked by the platform layer, masked everywhere; 'Order confirmed'; one charge of $1,050.00", `SPEC line; request on screen "••••"; digits never shown; 1 new charge 105000`,
+      `${t4b.speech === SPEC_LINES.checkoutDone ? "=" : "≠"} SPEC | "${status4}" | on screen="${subUser}" | utterance="${t4b.utterance}" | digits shown=${/4719|four seven one nine/i.test(transcriptText)} | charges ${charges0}->${ch4.length} (${ch4.at(-1)?.amount})`,
+      t4b.speech === SPEC_LINES.checkoutDone && status4 === "Order confirmed" && subUser === "••••" && t4b.utterance === "••••" && !/4719|four seven one nine/i.test(transcriptText) && ch4.length === charges0 + 1 && ch4.at(-1)?.amount === 105000);
     const during = mcpBodies.filter((b) => b.t >= mark4 && b.method === "tools/call");
     const allBodies = mcpBodies.map((b) => b.body).join("\n");
     const payLeaks = mcpBodies.filter((b) => /4719|voice_code|voice code|"pin"|instrument|credential|payment_method|pm_visa|last_digits|4242/i.test(b.body));
@@ -288,14 +323,19 @@ export async function runBrowserChecks(opts: { hostUrl: string; simBase: string;
       `${budget.toFixed(1)} s over ${b14.length} lines (${b14.map((t) => t.seconds).join(" + ")})`, b14.length === 6 && budget <= 45);
     add("B15b", "every Alexa line ≤ 20 s", "≤ 20 s", `longest ${Math.max(...turnsAll.map((t) => t.seconds))} s over ${turnsAll.length} lines`, Math.max(...turnsAll.map((t) => t.seconds)) <= 20);
     const brandHits = cardTexts.filter((t) => BRAND.test(t)).map((t) => `${t.split(":")[0]}:${t.match(BRAND)?.[0]}`).concat(BRAND.test(dev.deviceText) ? [`device:${dev.deviceText.match(BRAND)?.[0]}`] : []);
-    const deviceMarks = await page.evaluate(`(${MARKS_AND_FIT.toString()})(document.getElementById("device"))`) as { bad: string[]; svgs: number };
+    const deviceMarks = await page.evaluate(`(${MARKS_AND_FIT.toString()})(document.body)`) as { bad: string[]; svgs: number };
     add("B16", "no third-party logos or marks: only our shield, status icons and generic icons; no ring-like marks; no brand names; frame labelled", "0 violations; 'Echo Show 8 simulator (1280×800 frame)'",
-      `cards: ${fits.filter((f) => f.includes("!marks")).length} with violations · device: ${deviceMarks.svgs} svg, violations ${deviceMarks.bad.join("/") || "0"} · brand ${brandHits.length ? brandHits.join(",") : "0"} · label "${dev.frameLabel}"`,
+      `cards: ${fits.filter((f) => f.includes("!marks")).length} with violations · host page: ${deviceMarks.svgs} svg, violations ${deviceMarks.bad.join("/") || "0"} · brand ${brandHits.length ? brandHits.join(",") : "0"} · label "${dev.frameLabel}"`,
       !fits.some((f) => f.includes("!marks")) && deviceMarks.bad.length === 0 && brandHits.length === 0 && dev.frameLabel === "Echo Show 8 simulator (1280×800 frame)");
-    add("B17", "every card fits the display: no overflow, no clipped text, no wrapped amounts", "0 overflow / clipped / wrapped numbers in 8 cards", fits.join(" "), fits.length === 8 && fits.every((x) => !/!overflow|!clipped|!wrapped/.test(x)));
-    add("B21", "Inter is local: loaded in every card from the proofpay server (declared in _meta.ui.csp); no Google Fonts requests", "8 cards Inter; woff2 200 from the MCP origin; 0 remote",
-      `cards with Inter ${fits.filter((f) => !f.includes("!font")).length}/${fits.length} · woff2 ${fontReqs.length} (${[...new Set(fontReqs.map((f) => `${new URL(f.url).origin} ${f.status}`))].join(", ")}) · google ${remoteFont.length}`,
-      fits.length === 8 && fits.every((f) => !f.includes("!font")) && fontReqs.length > 0 && fontReqs.every((f) => f.status === 200 && f.url.startsWith(new URL(opts.mcpUrl).origin)) && remoteFont.length === 0);
+    add("B17", "every card fits the display; dom_check on every card: 0 wrapped numbers, 0 clipped text, 0 overlaps", "8 cards, no overflow / clipped / wrapped / overlaps", fits.join(" "), fits.length === 8 && fits.every((x) => !/!overflow|!clipped|!wrapped|!overlaps/.test(x)));
+    add("B22", "host page at 1920×1200 per beat (no page scroll); dom_check on the page: 0 wrapped numbers, 0 clipped text, 0 overlaps; request and reply fit the screen", "7 shots, all 1920×1200 w0 c0 o0, fitted",
+      pageDom.join(" | "), pageDom.length === 7 && pageDom.every((x) => !x.includes("!")));
+    const cardFonts = fontReqs.filter((f) => f.card), pageFonts = fontReqs.filter((f) => !f.card);
+    const hostInter = await page.evaluate(() => document.fonts.check("16px Inter"));
+    add("B21", "Inter is local: in every card from the proofpay server (declared in _meta.ui.csp), on the host page from the host server; no Google Fonts requests", "8 cards Inter; card woff2 200 from the MCP origin; page woff2 200 from the host origin; 0 remote",
+      `cards with Inter ${fits.filter((f) => !f.includes("!font")).length}/${fits.length} · card woff2 ${cardFonts.length} (${[...new Set(cardFonts.map((f) => `${new URL(f.url).origin} ${f.status}`))].join(", ")}) · page woff2 ${pageFonts.length} (${[...new Set(pageFonts.map((f) => `${new URL(f.url).origin} ${f.status}`))].join(", ")}) Inter=${hostInter} · google ${remoteFont.length}`,
+      fits.length === 8 && fits.every((f) => !f.includes("!font")) && cardFonts.length > 0 && cardFonts.every((f) => f.status === 200 && f.url.startsWith(new URL(opts.mcpUrl).origin)) &&
+      pageFonts.length > 0 && pageFonts.every((f) => f.status === 200 && f.url.startsWith(new URL(opts.hostUrl).origin)) && hostInter && remoteFont.length === 0);
     const iso = await page.evaluate(() => {
       const f = document.querySelector("#card iframe") as HTMLIFrameElement;
       let reachable = true;

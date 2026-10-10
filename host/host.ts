@@ -41,6 +41,9 @@ const WORDS_PER_SECOND = 2.5;
 const params = new URLSearchParams(location.search);
 const FAST = params.get("pace") === "fast";
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
+// Dark first (design guide); ?theme=light or ?theme=auto (follows the system) for the light theme.
+const THEME: "dark" | "light" = params.get("theme") === "light" || (params.get("theme") === "auto" && matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+document.documentElement.dataset.theme = THEME;
 
 const state = {
   userId: params.get("user") ?? `demo-${Date.now().toString(36)}`,
@@ -87,11 +90,30 @@ function transcript(role: "user" | "assistant" | "error", text: string): void {
   if (role === "error") state.errors.push(text);
 }
 
+/** Shrinks an element's font (in 1 px steps, down to min) until its text fits its box. */
+function fitText(el: HTMLElement, max: number, min: number, axis: "width" | "height"): void {
+  let size = max;
+  el.style.fontSize = `${size}px`;
+  const over = () => (axis === "width" ? el.scrollWidth > el.clientWidth + 1 : el.scrollHeight > el.clientHeight + 1);
+  while (size > min && over()) { size -= 1; el.style.fontSize = `${size}px`; }
+  el.dataset.fit = over() ? "overflow" : String(size);
+}
+
+/** Customer surface: the request and Alexa's reply on the screen; Alexa's line with its seconds in the subtitle bar. */
 function subtitles(user: string | null, alexa: string): void {
-  if (user !== null) $("sub-user").textContent = user ? `You: ${user}` : "";
+  if (user !== null) {
+    $("screen-request").textContent = user.replace(/^alexa[,!.]?\s*/i, "");
+    fitText($("screen-request"), 36, 22, "width");
+  }
+  $("screen-reply").textContent = alexa;
+  fitText($("screen-reply"), 30, 22, "height");
   $("sub-alexa").textContent = alexa;
-  $("sub-seconds").textContent = alexa ? `${seconds(alexa)} s` : "";
   $("sub-alexa").dataset.seconds = String(seconds(alexa));
+  $("sub-seconds").textContent = alexa ? `Alexa · ${seconds(alexa)} s` : "Alexa";
+  const sub = $("sub-alexa");
+  let size = 21;
+  sub.style.fontSize = `${size}px`;
+  while (size > 16 && sub.getBoundingClientRect().height > 2 * size * 1.3 + 2) { size -= 1; sub.style.fontSize = `${size}px`; }
 }
 
 /** Developer view only: never inside the device frame. */
@@ -131,13 +153,27 @@ function chip(label: string, args: string | null): { el: HTMLElement; done: (ste
         const b = document.createElement("span");
         b.className = "badge";
         b.textContent = s.mode.toUpperCase();
-        li.append(b, document.createTextNode(`${s.service} · ${s.op} — ${s.summary}`));
+        const t = document.createElement("span");
+        t.className = "step-text";
+        t.append(`${s.service} · ${s.op}`);
+        const sum = document.createElement("span");
+        sum.className = "step-sum";
+        sum.textContent = s.summary;
+        t.append(sum);
+        const m = document.createElement("span");
+        m.className = "step-ms";
+        m.textContent = s.ms > 0 ? `${s.ms} ms` : "";
+        li.append(b, t, m);
         ul.append(li);
       }
       if (error) {
         const li = document.createElement("li");
         li.className = "step";
-        li.textContent = `error: ${error}`;
+        li.dataset.error = "1";
+        const t = document.createElement("span");
+        t.className = "step-text";
+        t.textContent = `error: ${error}`;
+        li.append(t);
         ul.append(li);
       }
     },
@@ -165,7 +201,8 @@ async function connect(): Promise<void> {
   state.tools = [...tools.keys()];
   $("user").textContent = state.userId;
   $("protocol").textContent = state.protocolVersion;
-  $("session").textContent = state.sessionId;
+  $("session").textContent = state.sessionId.slice(0, 8);
+  $("session").title = state.sessionId;
   $("tools").textContent = state.tools.join(", ");
   document.body.dataset.connected = String(state.sessionsOpened);
 }
@@ -224,7 +261,7 @@ async function renderCard(toolName: string, args: Record<string, unknown>, uri: 
   const caps = c.getServerCapabilities();
   const b = new AppBridge(c, HOST_INFO, { serverTools: caps?.tools, serverResources: caps?.resources, message: { text: {} } }, {
     hostContext: {
-      theme: "dark", platform: "web", displayMode: "inline", availableDisplayModes: ["inline"],
+      theme: THEME, platform: "web", displayMode: "inline", availableDisplayModes: ["inline"],
       deviceClass: "echo-show-8", locale: "en-US", timeZone: "America/New_York",
       containerDimensions: { maxWidth: 1220, maxHeight: 590 }, deviceCapabilities: { touch: true, hover: false },
     },
@@ -301,13 +338,20 @@ function localReply(text: string, utterance: string, source: Turn["source"]): vo
 }
 
 // ---------- Alexa+ checkout (simulated platform layer) ----------
-async function ucp(method: "POST" | "PUT" | "GET", path: string, body?: unknown, idempotencyKey?: string): Promise<{ status: number; json: Session & { code?: string; error?: { code: string; message: string } } }> {
+async function ucp(method: "POST" | "PUT" | "GET", path: string, body?: unknown, idempotencyKey?: string): Promise<{ status: number; ms: number; json: Session & { code?: string; error?: { code: string; message: string } } }> {
   const headers: Record<string, string> = { "Content-Type": "application/json", Authorization: `Bearer pbp-sandbox-${state.userId}`, "UCP-Agent": 'profile="simulated-alexa-plus"', "Request-Id": `req-${crypto.randomUUID()}` };
   if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
+  const t0 = performance.now();
   const res = await fetch(`${CFG.checkoutBase}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   const json = await res.json();
   state.checkout.ucpCalls.push({ method, path, status: res.status, idempotencyKey: idempotencyKey ?? null });
-  return { status: res.status, json };
+  return { status: res.status, ms: Math.max(1, Math.round(performance.now() - t0)), json };
+}
+
+function dots(n: number): void {
+  const box = $("checkout-code-dots");
+  [...box.querySelectorAll("svg")].forEach((d, i) => d.classList.toggle("filled", i < n));
+  box.setAttribute("aria-label", `Voice code: ${n} of 4 digits`);
 }
 
 function hideCheckout(): void {
@@ -325,8 +369,9 @@ function showCheckout(co: Checkout): void {
   for (const l of s.line_items) {
     const li = document.createElement("li");
     li.dataset.kind = "item";
-    const a = document.createElement("span"); a.textContent = l.item.title;
-    const b = document.createElement("span"); b.textContent = usd(l.item.price);
+    li.insertAdjacentHTML("afterbegin", '<svg class="ok" viewBox="0 0 40 40" role="img" aria-label="Proven" data-mark="status"><circle cx="20" cy="20" r="19.3"/><path d="M11.9 21.2 L16.8 25.6 L28.3 15" fill="none" stroke-width="3.3" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+    const a = document.createElement("span"); a.className = "item-name"; a.textContent = l.item.title;
+    const b = document.createElement("span"); b.className = "item-amt"; b.textContent = usd(l.item.price);
     li.append(a, b);
     ul.append(li);
   }
@@ -341,13 +386,14 @@ function showCheckout(co: Checkout): void {
     d.append(dt, dd);
     dl.append(d);
   }
-  $("checkout-card").textContent = `${cap(co.instrument.brand)} ending ${co.instrument.last4} · sandbox`;
+  $("checkout-card").textContent = `${cap(co.instrument.brand)} ending ${co.instrument.last4}`;
   const refund = s.links.find((x) => x.type === "refund_policy");
   ($("checkout-refund") as HTMLAnchorElement).textContent = refund?.title ?? "Refund policy";
   ($("checkout-refund") as HTMLAnchorElement).href = refund?.url ?? "#";
-  $("checkout-code-dots").textContent = "· · · ·";
+  dots(0);
   $("checkout-code").hidden = false;
   $("checkout-status").textContent = "";
+  $("checkout-note").textContent = co.waits > 0 ? `${usd(co.waits)} is not in this order. It waits for your OK.` : "";
   layer.dataset.state = "awaiting-code";
   layer.hidden = false;
   $("card").classList.add("dimmed");
@@ -369,14 +415,14 @@ async function startCheckout(utterance: string, source: Turn["source"]): Promise
   const t0 = performance.now();
   const lines = (sc.data.lineItems ?? []).map((l) => ({ item: { id: l.itemId }, quantity: 1 }));
   const created = await ucp("POST", "/checkout-sessions", { line_items: lines, context: { language: "en-US", address_country: "US" } }, crypto.randomUUID());
-  const ucpSteps: Step[] = [{ service: "Partner checkout", op: "POST /checkout-sessions (Idempotency-Key)", mode: "sandbox", ms: 0, summary: `HTTP ${created.status} · ${created.json.status ?? created.json.error?.code}` }];
+  const ucpSteps: Step[] = [{ service: "Partner checkout", op: "POST /checkout-sessions (Idempotency-Key)", mode: "sandbox", ms: created.ms, summary: `HTTP ${created.status} · ${created.json.status ?? created.json.error?.code}` }];
   if (created.status !== 201) {
     c.done(ucpSteps, Math.round(performance.now() - t0), created.json.error?.message ?? "create failed");
     localReply("I couldn't start the checkout. Nothing was charged.", utterance, source);
     return;
   }
   const updated = await ucp("PUT", `/checkout-sessions/${created.json.id}`, { line_items: lines, buyer: { first_name: "Sandbox", last_name: "Homeowner" } });
-  ucpSteps.push({ service: "Partner checkout", op: "PUT /checkout-sessions/{id}", mode: "sandbox", ms: 0, summary: `HTTP ${updated.status} · ${updated.json.status}` });
+  ucpSteps.push({ service: "Partner checkout", op: "PUT /checkout-sessions/{id}", mode: "sandbox", ms: updated.ms, summary: `HTTP ${updated.status} · ${updated.json.status}` });
   c.done(ucpSteps, Math.round(performance.now() - t0));
   const session = updated.json;
   const inst = session.payment?.instruments?.[0];
@@ -401,7 +447,7 @@ async function finishCheckout(code: string, source: Turn["source"]): Promise<voi
   const p = state.pending;
   if (p?.kind !== "checkoutCode") return;
   const co = p.checkout;
-  $("checkout-code-dots").textContent = "• • • •";
+  dots(4);
   if (code !== CFG.voiceCode) { // checked by the platform (here: the host); never sent to the add-on
     co.attempts += 1;
     if (co.attempts >= 3) {
@@ -418,7 +464,7 @@ async function finishCheckout(code: string, source: Turn["source"]): Promise<voi
   const t0 = performance.now();
   const instrument = { id: `instr_${crypto.randomUUID().slice(0, 8)}`, handler_id: "partner_card_on_file", type: "card", credential: { type: "payment_method_reference", payment_method_id: co.instrument.id } };
   const done = await ucp("POST", `/checkout-sessions/${co.session.id}/complete`, { payment: { instruments: [instrument] } }, crypto.randomUUID());
-  const steps: Step[] = [{ service: "Partner checkout", op: "POST /checkout-sessions/{id}/complete (Idempotency-Key)", mode: "sandbox", ms: 0, summary: `HTTP ${done.status} · ${done.json.status ?? done.json.error?.code}${done.json.messages?.[0] ? ` · ${done.json.messages[0].code}` : ""}` }];
+  const steps: Step[] = [{ service: "Partner checkout", op: "POST /checkout-sessions/{id}/complete (Idempotency-Key)", mode: "sandbox", ms: done.ms, summary: `HTTP ${done.status} · ${done.json.status ?? done.json.error?.code}${done.json.messages?.[0] ? ` · ${done.json.messages[0].code}` : ""}` }];
   c.done(steps, Math.round(performance.now() - t0));
   state.pending = null;
   if (done.status === 200 && done.json.status === "completed") {
