@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createMcpHandler, isLegacyRequest, type McpServer } from "@modelcontextprotocol/server";
-import { NodeStreamableHTTPServerTransport, localhostHostValidation, localhostOriginValidation, toNodeHandler, toWebRequest } from "@modelcontextprotocol/node";
+import { NodeStreamableHTTPServerTransport, hostHeaderValidation, originValidation, toNodeHandler, toWebRequest } from "@modelcontextprotocol/node";
 import { createServices, type Services } from "../src/app/services.ts";
 import { buildMcpServer } from "./tools.ts";
 import { dataDir } from "./store.ts";
@@ -72,9 +72,18 @@ export async function startMcpServer(opts: { port: number; quiet?: boolean; serv
   const log = (...a: unknown[]) => { if (!opts.quiet) console.log(new Date().toISOString(), ...a); };
   const services = opts.services ?? createServices();
   const origins = hostOrigins();
-  const sessions = new Map<string, { transport: NodeStreamableHTTPServerTransport; server: McpServer; userId: string }>();
-  const validateHost = localhostHostValidation();
-  const validateOrigin = localhostOriginValidation();
+  const sessions = new Map<string, { transport: NodeStreamableHTTPServerTransport; server: McpServer; userId: string; seen: number }>();
+  // Sessions of closed browser tabs are never DELETEd: drop any session idle for SESSION_IDLE_MS (default 2 h).
+  const idleMs = Number(process.env.SESSION_IDLE_MS ?? 2 * 60 * 60_000);
+  const sweep = setInterval(() => {
+    const cutoff = Date.now() - idleMs;
+    for (const [id, s] of sessions) if (s.seen < cutoff) { sessions.delete(id); s.transport.close().catch(() => {}); }
+  }, 10 * 60_000);
+  sweep.unref();
+  // DNS-rebinding guards: localhost always; a public deployment adds its own hostnames (PUBLIC_HOSTNAMES=a.example,b.example).
+  const allowedHosts = ["localhost", "127.0.0.1", "[::1]", ...(process.env.PUBLIC_HOSTNAMES ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean)];
+  const validateHost = hostHeaderValidation(allowedHosts);
+  const validateOrigin = originValidation(allowedHosts);
   const webhooks: WebhookStats = { received: 0, rejected: 0, stored: 0, dropped: 0 };
   // 2026-07-28 leg: the SDK's per-request handler, strict (legacy traffic never reaches it).
   let assetBase = process.env.PUBLIC_BASE ?? ""; // set after listen when not given
@@ -125,6 +134,7 @@ export async function startMcpServer(opts: { port: number; quiet?: boolean; serv
           const s = sessions.get(sessionId);
           if (!s) { jsonRpcError(res, 404, "Session not found", -32001); return; }
           if (s.userId !== auth.extra.userId) { jsonRpcError(res, 403, "Session belongs to another account", -32001); return; }
+          s.seen = Date.now();
           await s.transport.handleRequest(req, res, body);
           return;
         }
@@ -132,7 +142,7 @@ export async function startMcpServer(opts: { port: number; quiet?: boolean; serv
         const transport = new NodeStreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (id) => {
-            sessions.set(id, { transport, server, userId: auth.extra.userId });
+            sessions.set(id, { transport, server, userId: auth.extra.userId, seen: Date.now() });
             log(`session open  ${id} user=${auth.extra.userId} (requested ${(body as { params?: { protocolVersion?: string } })?.params?.protocolVersion})`);
           },
           onsessionclosed: (id) => { sessions.delete(id); log(`session close ${id} (DELETE)`); },
@@ -179,6 +189,7 @@ export async function startMcpServer(opts: { port: number; quiet?: boolean; serv
     webhooks,
     sessions: () => sessions.size,
     close: async () => {
+      clearInterval(sweep);
       for (const { transport } of sessions.values()) await transport.close().catch(() => {});
       sessions.clear();
       await modern.close().catch(() => {});

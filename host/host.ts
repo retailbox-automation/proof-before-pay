@@ -13,7 +13,7 @@
 import { Client, StreamableHTTPClientTransport, type CallToolResult, type Tool } from "@modelcontextprotocol/client";
 import { AppBridge, PostMessageTransport, getToolUiResourceUri, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/app-bridge";
 
-type Cfg = { mcpUrl: string; sandboxProxyUrl: string; simUrl: string; checkoutBase: string; voiceCode: string };
+type Cfg = { mcpUrl: string; sandboxProxyUrl: string; simUrl: string; checkoutBase: string; voiceCode: string; sandboxBase: string | null };
 type Mode = "live" | "fixture" | "sandbox" | "simulated";
 type Step = { service: string; op: string; mode: Mode; ms: number; summary: string };
 type Turn = {
@@ -45,8 +45,16 @@ const $ = (id: string) => document.getElementById(id) as HTMLElement;
 const THEME: "dark" | "light" = params.get("theme") === "light" || (params.get("theme") === "auto" && matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
 document.documentElement.dataset.theme = THEME;
 
+/** A fresh simulated household for every page load and every reset: visitors (and tabs) never share state. */
+function newUserId(): string {
+  return `demo-${Date.now().toString(36)}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(36)}`;
+}
+// Public deployment: each simulated account has its own sandbox tenant (own clock, bookings, checkout).
+const simUrl = () => (CFG.sandboxBase ? `${CFG.sandboxBase}/t/${encodeURIComponent(state.userId)}/sim` : CFG.simUrl);
+const checkoutBase = () => (CFG.sandboxBase ? `${CFG.sandboxBase}/t/${encodeURIComponent(state.userId)}` : CFG.checkoutBase);
+
 const state = {
-  userId: params.get("user") ?? `demo-${Date.now().toString(36)}`,
+  userId: params.get("user") ?? newUserId(),
   protocolVersion: "",
   sessionId: "",
   tools: [] as string[],
@@ -342,7 +350,7 @@ async function ucp(method: "POST" | "PUT" | "GET", path: string, body?: unknown,
   const headers: Record<string, string> = { "Content-Type": "application/json", Authorization: `Bearer pbp-sandbox-${state.userId}`, "UCP-Agent": 'profile="simulated-alexa-plus"', "Request-Id": `req-${crypto.randomUUID()}` };
   if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
   const t0 = performance.now();
-  const res = await fetch(`${CFG.checkoutBase}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const res = await fetch(`${checkoutBase()}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   const json = await res.json();
   state.checkout.ucpCalls.push({ method, path, status: res.status, idempotencyKey: idempotencyKey ?? null });
   return { status: res.status, ms: Math.max(1, Math.round(performance.now() - t0)), json };
@@ -548,7 +556,7 @@ function enqueue(text: string, source: Turn["source"]): Promise<void> {
 // ---------- simulated clock ----------
 async function refreshClock(): Promise<void> {
   try {
-    const c = await (await fetch(`${CFG.simUrl}/clock`)).json() as { now: number; timeZone: string };
+    const c = await (await fetch(`${simUrl()}/clock`)).json() as { now: number; timeZone: string };
     const label = new Intl.DateTimeFormat("en-US", { timeZone: c.timeZone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(c.now));
     state.sim.nowLocal = label;
     $("clock").textContent = label;
@@ -562,7 +570,7 @@ async function simulatedTime(to: "demo" | "warranty"): Promise<void> {
   const t0 = performance.now();
   hideCheckout();
   try {
-    const res = await fetch(`${CFG.simUrl}/advance`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to }) });
+    const res = await fetch(`${simUrl()}/advance`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to }) });
     const r = await res.json() as { emitted?: { type: string; subType: string | null; status: number | null; delivered: boolean }[]; invoiceVisible?: boolean; photosVisible?: number; error?: { message: string } };
     if (!res.ok) throw new Error(r.error?.message ?? `HTTP ${res.status}`);
     const steps: Step[] = (r.emitted ?? []).map((e) => ({ service: "Front door camera webhook", op: `${e.type}${e.subType ? `/${e.subType}` : ""} (HMAC signed)`, mode: "simulated", ms: 0, summary: e.delivered ? `delivered · HTTP ${e.status}` : `not delivered · ${e.status ?? "no answer"}` }));
@@ -579,8 +587,8 @@ async function simulatedTime(to: "demo" | "warranty"): Promise<void> {
 }
 
 async function resetDemo(): Promise<void> {
-  await fetch(`${CFG.simUrl}/reset`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scenario: "demo" }) }).catch(() => {});
-  state.userId = `demo-${Date.now().toString(36)}`; // fresh household: the server keeps state per user
+  await fetch(`${simUrl()}/reset`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scenario: "demo" }) }).catch(() => {});
+  state.userId = newUserId(); // fresh household: the server keeps state per user
   state.pending = null;
   state.sim.advanced = false;
   $("sim-badge").dataset.advanced = "0";

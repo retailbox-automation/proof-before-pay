@@ -1,0 +1,8 @@
+node_modules
+dist
+logs
+.pids
+data/users
+data/verify
+Dockerfile
+.dockerignore

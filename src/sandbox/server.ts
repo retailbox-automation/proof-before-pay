@@ -7,6 +7,9 @@
 //   /checkout-sessions*, /.well-known/ucp   UCP-shaped checkout called by Alexa+ (here: our simulated checkout layer)
 //   /partner/checkout/prepare, /partner/warranty-claims   partner-side extensions used by the add-on
 //   /ring/*  Ring Partner API simulator: GET /ring/v1/history/devices/:id/events (Authorization: Bearer sandbox)
+//   /t/<tenant>/...  every route above, against that tenant's own state (own clock, bookings, checkout, webhooks).
+//            A public demo gives each visitor a tenant (= the simulated account id), so visitors never share state.
+//            Webhooks of a tenant go to ADDON_WEBHOOK_URL?user=<tenant>. Routes without /t/ use the "default" tenant.
 //   /sim/*   GET clock, POST advance { to } (emits due camera webhooks, signed), POST reset { scenario }, GET webhooks,
 //            GET charges (sandbox-only inspection)
 //
@@ -37,6 +40,8 @@ export interface SandboxOptions {
   signingKey?: string;
   corsOrigins?: string[];
   quiet?: boolean;
+  /** Most tenants kept in memory (least recently used dropped first). Default 1000. */
+  maxTenants?: number;
 }
 
 export interface Delivery {
@@ -54,7 +59,8 @@ export interface Delivery {
 export interface RunningSandbox {
   url: string;
   port: number;
-  state: SandboxState;
+  state: SandboxState; // the "default" tenant
+  tenants: () => number;
   deliveries: () => Delivery[];
   close: () => Promise<void>;
 }
@@ -96,7 +102,7 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
   return parseJson(await readRaw(req));
 }
 /** Account-linked user from the bearer token (simulated account linking: "pbp-sandbox-<user>"). */
-function linkedUser(req: IncomingMessage): string {
+function linkedUserOf(req: IncomingMessage): string {
   const m = /^Bearer\s+pbp-sandbox-([A-Za-z0-9_.-]{1,64})$/i.exec(req.headers.authorization ?? "");
   if (!m) throw new SandboxError(401, "unauthorized", "missing or invalid bearer token");
   return m[1];
@@ -118,18 +124,34 @@ export async function startSandbox(opts: SandboxOptions = {}): Promise<RunningSa
   const signingKey = opts.signingKey ?? SANDBOX_SIGNING_KEY;
   const webhookUrl = opts.webhookUrl ?? DEFAULT_WEBHOOK_URL;
   const cors = new Set(opts.corsOrigins ?? DEFAULT_CORS);
-  let state = new SandboxState(loadScenario(opts.scenario ?? "demo"));
-  const checkout = new CheckoutStore(() => state);
-  let deliveries: Delivery[] = [];
-  // /sim/advance and /sim/reset run one at a time so webhooks never interleave.
-  let simChain: Promise<unknown> = Promise.resolve();
-  const exclusive = <T>(fn: () => Promise<T>): Promise<T> => {
-    const run = simChain.then(fn, fn);
-    simChain = run.catch(() => undefined);
+  const scenarioName = opts.scenario ?? "demo";
+  const maxTenants = opts.maxTenants ?? 1000;
+  type Tenant = { id: string; state: SandboxState; checkout: CheckoutStore; deliveries: Delivery[]; simChain: Promise<unknown>; webhookUrl: string };
+  const tenants = new Map<string, Tenant>();
+  function tenantOf(id: string): Tenant {
+    let t = tenants.get(id);
+    if (t) { tenants.delete(id); tenants.set(id, t); return t; } // most recently used last
+    const hook = webhookUrl && id !== "default" ? `${webhookUrl}${webhookUrl.includes("?") ? "&" : "?"}user=${encodeURIComponent(id)}` : webhookUrl;
+    const created: Tenant = { id, state: new SandboxState(loadScenario(scenarioName)), checkout: undefined as unknown as CheckoutStore, deliveries: [], simChain: Promise.resolve(), webhookUrl: hook };
+    created.checkout = new CheckoutStore(() => created.state);
+    while (tenants.size >= maxTenants) {
+      const oldest = [...tenants.keys()].find((k) => k !== "default");
+      if (!oldest) break;
+      tenants.delete(oldest);
+    }
+    tenants.set(id, created);
+    return created;
+  }
+  tenantOf("default");
+  // /sim/advance and /sim/reset run one at a time per tenant so webhooks never interleave.
+  const exclusive = <T>(t: Tenant, fn: () => Promise<T>): Promise<T> => {
+    const run = t.simChain.then(fn, fn);
+    t.simChain = run.catch(() => undefined);
     return run;
   };
 
-  async function deliver(w: RingWebhook): Promise<Delivery> {
+  async function deliver(t: Tenant, w: RingWebhook): Promise<Delivery> {
+    const webhookUrl = t.webhookUrl;
     const sub = w.data.type === "motion_detected" ? w.data.attributes.sub_type : null;
     const d: Delivery = { id: w.data.id, type: w.data.type, subType: sub, timestamp: w.data.attributes.timestamp, requestId: w.meta.request_id, url: webhookUrl || null, delivered: false, status: null, error: null };
     if (!webhookUrl) { d.error = "delivery disabled (ADDON_WEBHOOK_URL is empty)"; return d; }
@@ -151,7 +173,7 @@ export async function startSandbox(opts: SandboxOptions = {}): Promise<RunningSa
     return d;
   }
 
-  const clockView = () => ({
+  const clockView = (state: SandboxState) => ({
     scenario: state.scenario.id,
     timeZone: state.scenario.timeZone,
     now: state.now,
@@ -165,9 +187,22 @@ export async function startSandbox(opts: SandboxOptions = {}): Promise<RunningSa
   });
 
   async function route(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
-    const p = url.pathname;
+    let p = url.pathname;
     const m = req.method ?? "GET";
-    if (p === "/healthz") return send(res, 200, { ok: true, scenario: state.scenario.id, now: state.now });
+    if (p === "/healthz") return send(res, 200, { ok: true, scenario: tenantOf("default").state.scenario.id, now: tenantOf("default").state.now, tenants: tenants.size });
+    let tenantId = "default";
+    const tm = /^\/t\/([A-Za-z0-9_.-]{1,64})(\/.*)$/.exec(p);
+    if (tm) { tenantId = tm[1]; p = tm[2]; }
+    else if (p.startsWith("/t/")) throw new SandboxError(400, "bad_tenant", "tenant must match [A-Za-z0-9_.-]{1,64}");
+    const tenant = tenantOf(tenantId);
+    const state = tenant.state;
+    const checkout = tenant.checkout;
+    // Inside a tenant, the account-linked user must be that tenant (a visitor cannot pay in another visitor's sandbox).
+    const linkedUser = (r: IncomingMessage): string => {
+      const u = linkedUserOf(r);
+      if (tenantId !== "default" && u !== tenantId) throw new SandboxError(403, "forbidden", "account does not own this sandbox tenant");
+      return u;
+    };
 
     // ---------- marketplace ----------
     if (p === "/spi/ListProfessionals" && m === "POST") {
@@ -239,18 +274,19 @@ export async function startSandbox(opts: SandboxOptions = {}): Promise<RunningSa
     }
 
     // ---------- simulation control ----------
-    if (p === "/sim/clock" && m === "GET") return send(res, 200, clockView());
-    if (p === "/sim/webhooks" && m === "GET") return send(res, 200, { deliveries });
+    if (p === "/sim/clock" && m === "GET") return send(res, 200, clockView(state));
+    if (p === "/sim/webhooks" && m === "GET") return send(res, 200, { deliveries: tenant.deliveries });
     if (p === "/sim/charges" && m === "GET") return send(res, 200, { charges: state.charges() });
     if (p === "/sim/advance" && m === "POST") {
       const body = parse(schemas.advance, await readBody(req));
-      const out = await exclusive(async () => {
+      const out = await exclusive(tenant, async () => {
+        const state = tenant.state; // current after any reset queued before us
         const to = typeof body.to === "number" ? body.to : body.to === "demo" ? state.scenario.clock.demoAdvanceTo : body.to === "warranty" ? state.scenario.clock.warrantyAdvanceTo : Date.parse(body.to);
         if (Number.isNaN(to)) throw new SandboxError(400, "bad_time", "to must be epoch milliseconds, an ISO time, \"demo\" or \"warranty\"");
         const due = state.advance(to);
         const emitted: Delivery[] = [];
-        for (const w of due) emitted.push(await deliver(w)); // in time order, one at a time
-        deliveries = [...deliveries, ...emitted];
+        for (const w of due) emitted.push(await deliver(tenant, w)); // in time order, one at a time
+        tenant.deliveries = [...tenant.deliveries, ...emitted];
         log(`clock -> ${new Date(to).toISOString()}, ${emitted.length} webhook(s), ${emitted.filter((d) => d.delivered).length} delivered`);
         const active = state.bookings().find((b) => b.stage === "CONFIRMATION" && b.status !== "CANCELLED");
         let invoiceVisible = false;
@@ -259,20 +295,20 @@ export async function startSandbox(opts: SandboxOptions = {}): Promise<RunningSa
           photosVisible = state.photos(active.partnerBookingId).length;
           try { state.invoice(active.partnerBookingId); invoiceVisible = true; } catch { invoiceVisible = false; }
         }
-        return { ...clockView(), emitted, invoiceVisible, photosVisible };
+        return { ...clockView(state), emitted, invoiceVisible, photosVisible };
       });
       return send(res, 200, out);
     }
     if (p === "/sim/reset" && m === "POST") {
       const body = parse(schemas.reset, await readBody(req));
-      await exclusive(async () => {
+      await exclusive(tenant, async () => {
         const name = body.scenario ?? "demo";
-        try { state = new SandboxState(loadScenario(name)); } catch (err) { throw new SandboxError(400, "unknown_scenario", err instanceof Error ? err.message : String(err)); }
-        deliveries = [];
-        checkout.reset();
+        try { tenant.state = new SandboxState(loadScenario(name)); } catch (err) { throw new SandboxError(400, "unknown_scenario", err instanceof Error ? err.message : String(err)); }
+        tenant.deliveries = [];
+        tenant.checkout.reset();
       });
-      log(`reset to scenario ${state.scenario.id}`);
-      return send(res, 200, clockView());
+      log(`reset tenant ${tenantId} to scenario ${tenant.state.scenario.id}`);
+      return send(res, 200, clockView(tenant.state));
     }
     throw new SandboxError(404, "not_found", `no route ${m} ${p}`);
   }
@@ -303,12 +339,13 @@ export async function startSandbox(opts: SandboxOptions = {}): Promise<RunningSa
   });
   const addr = http.address();
   const port = typeof addr === "object" && addr ? addr.port : opts.port ?? DEFAULT_SANDBOX_PORT;
-  log(`sandbox on http://127.0.0.1:${port} (scenario ${state.scenario.id}, webhooks -> ${webhookUrl || "disabled"})`);
+  log(`sandbox on http://127.0.0.1:${port} (scenario ${scenarioName}, webhooks -> ${webhookUrl || "disabled"}, tenants under /t/<id>)`);
   return {
     url: `http://127.0.0.1:${port}`,
     port,
-    get state() { return state; },
-    deliveries: () => [...deliveries],
+    get state() { return tenantOf("default").state; },
+    tenants: () => tenants.size,
+    deliveries: () => [...tenantOf("default").deliveries],
     close: async () => {
       http.closeAllConnections();
       await new Promise<void>((r) => http.close(() => r()));

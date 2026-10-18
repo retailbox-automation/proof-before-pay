@@ -89,7 +89,8 @@ async function checkLicense(services: Services, steps: Steps, number: string, na
   } catch (e) {
     c = { query: number, found: false, records: [], active: false, claimedName: name, nameMatch: "n/a", verdict: "unavailable", source: { service: "Florida DBPR license search", mode: services.registryMode === "fixture" ? "fixture" : "live", asOf: new Date(now).toISOString(), ref: String(e) } };
   }
-  steps.add({ service: REGISTRY, op, mode: c.source.mode, ms: Math.round(performance.now() - t0), summary: verdictSummary(c) });
+  const fellBack = c.source.ref?.startsWith("live registry unavailable") ? " · live registry failed, recorded page used" : "";
+  steps.add({ service: REGISTRY, op, mode: c.source.mode, ms: Math.round(performance.now() - t0), summary: verdictSummary(c) + fellBack });
   return c;
 }
 
@@ -156,14 +157,14 @@ function draftText(job: Job): string {
 
 export type BuildOptions = { era: "legacy" | "modern"; services: Services; assetBase?: string };
 
-export function buildMcpServer({ era, services, assetBase = "" }: BuildOptions): McpServer {
+export function buildMcpServer({ era, services: base, assetBase = "" }: BuildOptions): McpServer {
   const server = new McpServer(
     { name: "proofpay", title: "Proof Before Pay", version: "0.1.0" },
     {
       ...(era === "legacy" ? { supportedProtocolVersions: [LATEST_PROTOCOL_VERSION] } : {}),
       instructions:
         "Proof Before Pay helps a homeowner hire a licensed pro and pay only for work that is proven. " +
-        "Flow: find_pros -> book_job (confirm=false reads the booking back, confirm=true books) -> review_invoice -> pay_proven (first without a code, then with the spoken 4-digit voice code) -> job_status / draft_note. " +
+        "Flow: find_pros -> book_job (confirm=false reads the booking back, confirm=true books) -> review_invoice -> prepare_checkout (stages a checkout with the proven items only; Alexa+ checkout takes the payment, this add-on never sees a voice code or card) -> job_status / draft_note; warranty_callback for a covered repeat problem; cancel_booking. " +
         "Every fact names its source. Payments are sandbox only. The draft note is never sent by this add-on.",
     },
   );
@@ -181,6 +182,7 @@ export function buildMcpServer({ era, services, assetBase = "" }: BuildOptions):
     _meta: { ui: { resourceUri: viewUri("pros") } },
   }, async ({ trade, job_summary }, ctx) => {
     const uid = userIdOf(ctx);
+    const services = base.forUser(uid); // this account's sandbox tenant
     const steps = new Steps();
     const clk = await services.now();
     const user = loadUser(uid);
@@ -210,6 +212,7 @@ export function buildMcpServer({ era, services, assetBase = "" }: BuildOptions):
     _meta: { ui: { resourceUri: viewUri("scope") } },
   }, async ({ pro_id, confirm }, ctx) => {
     const uid = userIdOf(ctx);
+    const services = base.forUser(uid); // this account's sandbox tenant
     const steps = new Steps();
     const clk = await services.now();
     const user = loadUser(uid);
@@ -262,6 +265,7 @@ export function buildMcpServer({ era, services, assetBase = "" }: BuildOptions):
     _meta: { ui: { resourceUri: viewUri("scope") } },
   }, async ({ job_id, confirm }, ctx) => {
     const uid = userIdOf(ctx);
+    const services = base.forUser(uid); // this account's sandbox tenant
     const steps = new Steps();
     const clk = await services.now();
     const user = loadUser(uid);
@@ -290,6 +294,7 @@ export function buildMcpServer({ era, services, assetBase = "" }: BuildOptions):
     _meta: { ui: { resourceUri: viewUri("payment") } },
   }, async ({ job_id }, ctx) => {
     const uid = userIdOf(ctx);
+    const services = base.forUser(uid); // this account's sandbox tenant
     const steps = new Steps();
     const clk = await services.now();
     const user = loadUser(uid);
@@ -334,6 +339,7 @@ export function buildMcpServer({ era, services, assetBase = "" }: BuildOptions):
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
   }, async ({ job_id }, ctx) => {
     const uid = userIdOf(ctx);
+    const services = base.forUser(uid); // this account's sandbox tenant
     const steps = new Steps();
     const clk = await services.now();
     const user = loadUser(uid);
@@ -380,6 +386,7 @@ export function buildMcpServer({ era, services, assetBase = "" }: BuildOptions):
     _meta: { ui: { resourceUri: viewUri("status") } },
   }, async ({ job_id }, ctx) => {
     const uid = userIdOf(ctx);
+    const services = base.forUser(uid); // this account's sandbox tenant
     const steps = new Steps();
     const user = steps.sync("Saved job state", "read", "sandbox", () => loadUser(uid), (s) => `${s.jobs.length} job(s) on your account`);
     const found = currentJob(user, job_id);
@@ -398,6 +405,7 @@ export function buildMcpServer({ era, services, assetBase = "" }: BuildOptions):
     _meta: { ui: { resourceUri: viewUri("draft") } },
   }, async ({ job_id }, ctx) => {
     const uid = userIdOf(ctx);
+    const services = base.forUser(uid); // this account's sandbox tenant
     const steps = new Steps();
     const clk = await services.now();
     const found = currentJob(loadUser(uid), job_id);
@@ -421,6 +429,7 @@ export function buildMcpServer({ era, services, assetBase = "" }: BuildOptions):
     _meta: { ui: { resourceUri: viewUri("warranty") } },
   }, async ({ issue: said, confirm, job_id }, ctx) => {
     const uid = userIdOf(ctx);
+    const services = base.forUser(uid); // this account's sandbox tenant
     const steps = new Steps();
     const clk = await services.now();
     const job = currentJob(loadUser(uid), job_id);

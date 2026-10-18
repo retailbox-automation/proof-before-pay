@@ -305,3 +305,33 @@ test("scenario file: epoch values match their local-time twins; a mismatch is re
   raw.photos[0].takenAt += 60_000;
   assert.throws(() => validateScenario(raw), /takenAt|PH-S1/);
 });
+
+test("tenants: /t/<id>/ has its own clock, bookings and webhooks; a visitor cannot use another tenant's checkout", async () => {
+  received = [];
+  const before = (await call<{ now: number; bookings: unknown[] }>("/sim/clock")).json;
+  for (const t of ["visitor-a", "visitor-b"]) assert.equal((await call(`/t/${t}/sim/reset`, { scenario: "demo" })).status, 200);
+  // A books and advances; B stays untouched.
+  const est = await call<{ booking: Booking }>("/t/visitor-a/spi/CreateBooking", { stage: "ESTIMATE", alexaBookingId: "AB-a", proId: "P1" });
+  await call("/t/visitor-a/spi/CreateBooking", { stage: "CONFIRMATION", alexaBookingId: "AB-a", partnerBookingId: est.json.booking.partnerBookingId, homeownerConsentToVisitLogging: true });
+  const adv = await call<{ now: number; emitted: { delivered: boolean; url: string }[]; invoiceVisible: boolean }>("/t/visitor-a/sim/advance", { to: "demo" });
+  assert.equal(adv.status, 200);
+  assert.ok(adv.json.emitted.length > 0);
+  assert.ok(adv.json.emitted.every((e) => e.url === `${receiverUrl}?user=visitor-a`), "tenant webhooks name the tenant");
+  assert.equal(adv.json.invoiceVisible, true);
+  const b = (await call<{ now: number; bookings: unknown[] }>("/t/visitor-b/sim/clock")).json;
+  assert.equal(b.now, Date.parse("2026-10-14T18:00:00-04:00"), "B's clock did not move");
+  assert.deepEqual(b.bookings, []);
+  assert.equal((await call("/t/visitor-b/spi/invoice/PB-1001")).status, 404, "B sees no invoice");
+  // B's own booking gets the same first id (independent counters) without touching A's booking.
+  const bEst = await call<{ booking: Booking }>("/t/visitor-b/spi/CreateBooking", { stage: "ESTIMATE", alexaBookingId: "AB-b", proId: "P2" });
+  assert.equal(bEst.json.booking.partnerBookingId, est.json.booking.partnerBookingId);
+  assert.equal((await call<{ booking: Booking }>(`/t/visitor-a/spi/GetBooking`, { partnerBookingId: est.json.booking.partnerBookingId })).json.booking.proId, "P1");
+  // The default tenant is unaffected.
+  assert.equal((await call<{ now: number }>("/sim/clock")).json.now, before.now);
+  // Checkout inside a tenant only for that tenant's account.
+  const own = await req("POST", "/t/visitor-a/checkout-sessions", { line_items: [] }, { Authorization: "Bearer pbp-sandbox-visitor-a" });
+  assert.notEqual(own.status, 403);
+  const other = await req("POST", "/t/visitor-a/checkout-sessions", { line_items: [] }, { Authorization: "Bearer pbp-sandbox-visitor-b" });
+  assert.equal(other.status, 403);
+  assert.equal((await call("/t/bad id/sim/clock")).status, 400);
+});

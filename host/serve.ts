@@ -52,7 +52,15 @@ function listen(server: Server, port: number): Promise<number> {
   });
 }
 
-export type HostOptions = { hostPort?: number; proxyPort?: number; mcpUrl?: string; simUrl?: string; checkoutBase?: string; quiet?: boolean };
+export type HostOptions = {
+  hostPort?: number; proxyPort?: number; mcpUrl?: string; simUrl?: string; checkoutBase?: string; quiet?: boolean;
+  /** Public deployment: extra origins the host page is served from (the card proxy accepts them as embedders). */
+  publicOrigins?: string[];
+  /** Public deployment: the card proxy's own public URL (a different origin than the host page). */
+  proxyUrl?: string;
+  /** Sandbox root for per-visitor tenants: the host then uses <sandboxBase>/t/<user>/sim and .../checkout-sessions. */
+  sandboxBase?: string;
+};
 export type RunningHost = { hostUrl: string; proxyUrl: string; close: () => Promise<void> };
 
 export async function startHost(opts: HostOptions = {}): Promise<RunningHost> {
@@ -65,9 +73,9 @@ export async function startHost(opts: HostOptions = {}): Promise<RunningHost> {
   const checkoutBase = opts.checkoutBase ?? simUrl.replace(/\/sim$/, "");
   // Sandbox voice purchasing code of the simulated Alexa+ account. Checked by the platform layer only.
   const voiceCode = env.SANDBOX_VOICE_CODE ?? "4719";
-  const hostOrigins = [`http://127.0.0.1:${hostPort}`, `http://localhost:${hostPort}`];
-  const proxyUrl = `http://127.0.0.1:${proxyPort}/sandbox.html`;
-  const config = `window.__PBP = ${JSON.stringify({ mcpUrl, sandboxProxyUrl: proxyUrl, simUrl, checkoutBase, voiceCode })};\n`;
+  const hostOrigins = [`http://127.0.0.1:${hostPort}`, `http://localhost:${hostPort}`, ...(opts.publicOrigins ?? [])];
+  const proxyUrl = opts.proxyUrl ?? `http://127.0.0.1:${proxyPort}/sandbox.html`;
+  const config = `window.__PBP = ${JSON.stringify({ mcpUrl, sandboxProxyUrl: proxyUrl, simUrl, checkoutBase, voiceCode, sandboxBase: opts.sandboxBase ?? null })};\n`;
 
   const host = createServer((req, res) => {
     const path = new URL(req.url ?? "/", "http://x").pathname;

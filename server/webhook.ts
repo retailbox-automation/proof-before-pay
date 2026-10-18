@@ -1,7 +1,7 @@
 // POST /webhooks/doorbell — front door camera events (Ring Partner API v1.1 webhook format).
 // 1. Read the RAW body and verify X-Signature (HMAC-SHA256) over those exact bytes. Bad -> 401, nothing stored.
 // 2. Keep only arrive/leave-relevant fields (ids + timestamps). No video, no faces, no recognition.
-// 3. Attach an event only to a confirmed job of the household that owns the device, inside the booking
+// 3. Attach an event only (with ?user=<id>: only to that account) to a confirmed job of the household that owns the device, inside the booking
 //    window (60 min before start .. 120 min after end), and only when both sides consented to visit logging.
 //    Anything else is dropped, not stored (data is kept for the job only).
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -42,10 +42,13 @@ export async function handleDoorbellWebhook(req: IncomingMessage, res: ServerRes
   }
   let events;
   try { events = services.parseWebhook(raw); } catch { json(res, 400, { error: "not a v1.1 motion_detected / button_press payload" }); return; }
+  // A per-visitor sandbox tenant delivers to ?user=<id>: only that account is considered (visitors share the demo device id).
+  const only = new URL(req.url ?? "/", "http://127.0.0.1").searchParams.get("user");
+  const candidates = only !== null ? (/^[A-Za-z0-9_.-]{1,64}$/.test(only) ? [only] : []) : listUserIds();
   let stored = 0, dropped = 0;
   for (const ev of events) {
     let attached = false;
-    for (const uid of listUserIds()) {
+    for (const uid of candidates) {
       const s = loadUser(uid);
       if (s.doorbell.deviceId !== ev.deviceId || (ev.accountId && s.doorbell.accountId !== ev.accountId)) continue;
       const match = s.jobs.find((j) => j.status === "CONFIRMED" && j.scope.visitLoggingConsent.granted && ev.timestamp >= j.start - 60 * 60_000 && ev.timestamp <= j.end + 120 * 60_000);

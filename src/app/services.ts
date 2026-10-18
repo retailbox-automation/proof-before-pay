@@ -10,7 +10,7 @@
 // Playground token without code changes. Pure logic comes from src/core (lane CORE).
 import type { Charge, Evidence, LicenseCheck, PaymentPlan, Photo, Professional, ScopeOfWork, SourceMode, VisitWindow } from "../core/types.ts";
 import { reconcile as coreReconcile } from "../core/reconcile.ts";
-import { lookupLicense as coreLookupLicense } from "../core/registry/lookup.ts";
+import { lookupLicenseWithDiagnostics as coreLookupLicense } from "../core/registry/lookup.ts";
 import { loadRegistryFixtures, type RegistryFixtures } from "../core/registry/fixtures.ts";
 import { verify as coreVerify } from "../core/doorbell/hmac.ts";
 import { parseRingWebhook, ringHistoryPageSchema, type RingHistoryPage } from "../core/doorbell/ring-format.ts";
@@ -25,8 +25,13 @@ export type Env = {
   RING_TOKEN: string; // bearer for the camera history API ("sandbox" against the simulator)
   CAMERA_MODE: SourceMode; // how camera facts are labelled: "simulated" against the sandbox simulator
   REGISTRY_MODE: "fixture" | "live" | "auto";
-  /** Opt-in (recording only): license numbers that always go to the live registry, even with a recorded page. */
+  /** License numbers that always go to the live registry, even with a recorded page (the live answer is truthful for them). */
   REGISTRY_LIVE_NUMBERS: string[];
+  /** Per HTTP call to the live registry (ms). */
+  REGISTRY_TIMEOUT_MS: number;
+  /** Sandbox root. With SANDBOX_PER_USER, every account gets its own sandbox tenant under <SANDBOX_BASE>/t/<userId>. */
+  SANDBOX_BASE: string;
+  SANDBOX_PER_USER: boolean;
 };
 
 export function envFromProcess(e: NodeJS.ProcessEnv = process.env): Env {
@@ -43,6 +48,9 @@ export function envFromProcess(e: NodeJS.ProcessEnv = process.env): Env {
     CAMERA_MODE: (e.CAMERA_MODE as SourceMode | undefined) ?? "simulated",
     REGISTRY_MODE: mode,
     REGISTRY_LIVE_NUMBERS: (e.REGISTRY_LIVE_NUMBERS ?? "").split(",").map((x) => x.trim().toUpperCase()).filter(Boolean),
+    REGISTRY_TIMEOUT_MS: Number(e.REGISTRY_TIMEOUT_MS ?? 8000),
+    SANDBOX_BASE: sandbox,
+    SANDBOX_PER_USER: e.SANDBOX_PER_USER === "1",
   };
 }
 
@@ -95,6 +103,8 @@ export type BookingRequest =
 
 export interface Services {
   readonly registryMode: Env["REGISTRY_MODE"];
+  /** The same services bound to one account's sandbox tenant (SANDBOX_PER_USER=1); otherwise this object. */
+  forUser(userId: string): Services;
   now(): Promise<{ now: number; simulated: boolean }>;
   listProfessionals(q: { projectDescription: string; zipCode: string; trade: string }): Promise<Professional[]>;
   /** `now` = check time shown as "checked <time>" (the simulated clock in fixture mode). */
@@ -197,12 +207,34 @@ async function call<T>(url: string, init: RequestInit & { json?: unknown } = {})
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+// Registry fixtures and live answers are shared by every account (the registry is public; one answer serves all).
+let fixtures: RegistryFixtures | null = null;
+const regFixtures = () => (fixtures ??= loadRegistryFixtures());
+const LIVE_CACHE_MS = 10 * 60_000;
+const liveCache = new Map<string, { at: number; check: LicenseCheck }>();
+
+/** <base>/t/<userId><rest> when base points into the sandbox; other bases (e.g. a real camera API) stay as they are. */
+function tenantUrl(url: string, sandbox: string, userId: string): string {
+  return url.startsWith(sandbox) ? `${sandbox}/t/${encodeURIComponent(userId)}${url.slice(sandbox.length)}` : url;
+}
+
 export function createServices(env: Env = envFromProcess()): Services {
   const spi = (p: string) => `${env.SPI_BASE}${p}`;
-  let fixtures: RegistryFixtures | null = null;
-  const regFixtures = () => (fixtures ??= loadRegistryFixtures());
+  const tenants = new Map<string, Services>();
   return {
     registryMode: env.REGISTRY_MODE,
+
+    forUser(userId) {
+      if (!env.SANDBOX_PER_USER) return this;
+      let s = tenants.get(userId);
+      if (!s) {
+        const t = (u: string) => tenantUrl(u, env.SANDBOX_BASE, userId);
+        s = createServices({ ...env, SANDBOX_PER_USER: false, SPI_BASE: t(env.SPI_BASE), RING_API_BASE: t(env.RING_API_BASE), SIM_BASE: t(env.SIM_BASE), PARTNER_BASE: t(env.PARTNER_BASE) });
+        if (tenants.size >= 2000) tenants.delete(tenants.keys().next().value!);
+        tenants.set(userId, s);
+      }
+      return s;
+    },
 
     async now() {
       try {
@@ -218,9 +250,23 @@ export function createServices(env: Env = envFromProcess()): Services {
       return r.professionals;
     },
 
-    lookupLicense(licenseNumber, claimedName, now) {
-      const mode = (env.REGISTRY_LIVE_NUMBERS ?? []).includes(licenseNumber.toUpperCase()) ? "live" : env.REGISTRY_MODE;
-      return coreLookupLicense(licenseNumber, claimedName, { mode, fixtures: regFixtures(), now: mode === "fixture" ? now : undefined });
+    async lookupLicense(licenseNumber, claimedName, now) {
+      const key = licenseNumber.toUpperCase().replace(/[\s-]/g, "");
+      const mode = (env.REGISTRY_LIVE_NUMBERS ?? []).includes(key) ? "live" : env.REGISTRY_MODE;
+      const fx = regFixtures();
+      const goesLive = mode === "live" || (mode === "auto" && !fx[key]);
+      if (goesLive) {
+        const hit = liveCache.get(`${key}|${claimedName}`);
+        if (hit && Date.now() - hit.at < LIVE_CACHE_MS) return { ...hit.check, source: { ...hit.check.source, ref: `${hit.check.source.ref} (live answer from ${Math.max(1, Math.round((Date.now() - hit.at) / 60_000))} min ago, cached)` } };
+      }
+      const r = await coreLookupLicense(licenseNumber, claimedName, { mode, fixtures: fx, now: mode === "fixture" ? now : undefined, timeoutMs: env.REGISTRY_TIMEOUT_MS });
+      if (!goesLive) return r.check;
+      if (r.check.verdict !== "unavailable") { liveCache.set(`${key}|${claimedName}`, { at: Date.now(), check: r.check }); return r.check; }
+      // Live registry failed (error, timeout, unexpected page): fall back to the recorded page when there is one,
+      // labelled as such (mode "fixture", ref says why). Never turns a failure into "verified" without a recorded page.
+      if (!fx[key]) return r.check;
+      const f = await coreLookupLicense(licenseNumber, claimedName, { mode: "fixture", fixtures: fx, now });
+      return { ...f.check, source: { ...f.check.source, ref: `live registry unavailable (${(r.error ?? "no answer").slice(0, 80)}); recorded page ${fx[key].file}` } };
     },
 
     async createBooking(r) {
