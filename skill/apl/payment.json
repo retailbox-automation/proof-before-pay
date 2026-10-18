@@ -114,6 +114,7 @@
                 "type": "Container",
                 "grow": 1,
                 "shrink": 1,
+                "paddingRight": "28dp",
                 "items": [
                   { "type": "Text", "style": "subtitle", "color": "@fg", "text": "Subtotal ${payload.payment.subtotalText} · Fees ${payload.payment.feesText} · Total ${payload.payment.totalText}", "maxLines": 1 },
                   { "type": "Text", "style": "rowDetail", "text": "${payload.card.footer} Alexa completes checkout; this skill never asks for a card or a voice code.", "maxLines": 2 }

@@ -7,5 +7,7 @@ RUN npm ci --include=dev --no-audit --no-fund
 COPY . .
 RUN node build.ts && npm prune --omit=dev --no-audit --no-fund && rm -rf data/verify logs .pids
 ENV NODE_ENV=production
+# The registry prints Florida (Eastern) times without a zone; parse them in that zone.
+ENV TZ=America/New_York
 EXPOSE 8080
 CMD ["node", "scripts/public.ts"]

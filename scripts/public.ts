@@ -5,7 +5,8 @@
 //   https://<PUBLIC_ORIGIN>/                  host simulator (Echo Show 8 frame, "Play demo")
 //   https://<PUBLIC_ORIGIN>/mcp               proofpay MCP endpoint (Streamable HTTP, 2025-11-25 + 2026-07-28)
 //   https://<PUBLIC_ORIGIN>/assets/fonts/*    Inter for the cards
-//   https://<PUBLIC_ORIGIN>/sandbox/t/<id>/*  the visitor's own sandbox tenant (clock, simulated checkout)
+//   https://<PUBLIC_ORIGIN>/sandbox/t/<id>/*  the visitor's own sandbox tenant (clock, simulated checkout); echo-* refused
+//   (the Echo Show demo account is controlled from inside the container: scripts/sandbox-admin.ts)
 //   https://<PUBLIC_ORIGIN>/alexa             Alexa skill endpoint (Amazon request signature + timestamp verified)
 //   https://<PUBLIC_ORIGIN>/healthz           health of every part
 //   https://<CARDS_ORIGIN>/sandbox.html       card proxy: MUST be a different origin than the host page (MCP Apps)
@@ -82,6 +83,11 @@ function forward(req: IncomingMessage, res: ServerResponse, to: number, path: st
   req.pipe(up);
 }
 
+function refuse(res: ServerResponse, why: string): void {
+  res.writeHead(403, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ error: { code: "forbidden", message: why } }));
+}
+
 async function health(): Promise<Record<string, unknown>> {
   const probe = async (url: string) => {
     try { const r = await fetch(url, { signal: AbortSignal.timeout(2000) }); return r.ok ? await r.json() : { ok: false, status: r.status }; } catch (e) { return { ok: false, error: String(e) }; }
@@ -107,6 +113,10 @@ const gateway = createServer(async (req, res) => {
     res.writeHead(h.ok ? 200 : 503, { "Content-Type": "application/json", "Cache-Control": "no-store" });
     res.end(JSON.stringify(h)); return;
   }
+  // Accounts named echo-* belong to the real Echo Show (the Alexa skill reaches the MCP server on 127.0.0.1): nobody on
+  // the public side may use them, so a visitor cannot move the device demo's clock or state.
+  if (p === "/mcp" && /^Bearer\s+pbp-sandbox-echo-/i.test(req.headers.authorization ?? "")) return refuse(res, "the echo-* accounts belong to the Echo Show demo");
+  if (p.startsWith("/sandbox/t/echo-")) return refuse(res, "the echo-* sandbox belongs to the Echo Show demo");
   if (p === "/mcp" || p.startsWith("/assets/fonts/")) return forward(req, res, internal.mcp, req.url ?? "/");
   if (p === "/alexa") return forward(req, res, internal.skill, "/alexa");
   if (p.startsWith("/sandbox/t/")) return forward(req, res, internal.sandbox, (req.url ?? "/").slice("/sandbox".length));
