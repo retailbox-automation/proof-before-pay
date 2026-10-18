@@ -13,7 +13,7 @@ import { runBrowserChecks } from "./browser.ts";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PIDS = join(ROOT, ".pids");
 const LOGS = join(ROOT, "logs");
-const SCREENS = join(ROOT, "..", "..", "docs", "screens", "proof-before-pay");
+const SCREENS = join(ROOT, "docs", "screens");
 const ports = {
   mcp: Number(process.env.MCP_PORT ?? 8787),
   host: Number(process.env.HOST_PORT ?? 5178),
@@ -95,7 +95,7 @@ try {
   rows.push(r);
   log(`${r.pass ? "PASS" : "FAIL"} C1 ${r.check} :: ${r.actual}`);
 
-  // Alexa custom skill (lane SKILL): its tests run the skill as an MCP client of a fresh proofpay stack on ephemeral ports.
+  // Alexa custom skill (skill build): its tests run the skill as an MCP client of a fresh proofpay stack on ephemeral ports.
   const sk = spawnSync(process.execPath, ["--test", "skill/test/*.test.ts"], { cwd: ROOT, encoding: "utf8" });
   const skTxt = sk.stdout + sk.stderr;
   writeFileSync(join(LOGS, "skill-tests.log"), skTxt);
@@ -104,8 +104,8 @@ try {
   rows.push(c3);
   log(`${c3.pass ? "PASS" : "FAIL"} C3 ${c3.check} :: ${c3.actual}`);
 
-  // Backtest (lane CORE): exit 0 = published numbers reproduce, 1 = they differ, 2 = ledger not supplied.
-  const published = existsSync(join(ROOT, "..", "..", "docs", "proof-before-pay", "BACKTEST.md"));
+  // Backtest (core build): exit 0 = published numbers reproduce, 1 = they differ, 2 = ledger not supplied.
+  const published = existsSync(join(ROOT, "docs", "BACKTEST.md"));
   if (existsSync(join(ROOT, "scripts", "backtest.ts"))) {
     const bt = spawnSync(process.execPath, ["scripts/backtest.ts", "--check"], { cwd: ROOT, encoding: "utf8" });
     writeFileSync(join(LOGS, "backtest.log"), bt.stdout + bt.stderr);
@@ -113,12 +113,12 @@ try {
     if (bt.status === 2 && !published) {
       log(`NOTE C2 backtest pending: anonymized ledger not supplied and no BACKTEST.md published yet (exit 2) - not counted`);
     } else {
-      const row = { id: "C2", check: "backtest re-run reproduces docs/proof-before-pay/BACKTEST.md", expected: "exit 0", actual: `exit ${bt.status} ${last}`, pass: bt.status === 0 };
+      const row = { id: "C2", check: "backtest re-run reproduces docs/BACKTEST.md", expected: "exit 0", actual: `exit ${bt.status} ${last}`, pass: bt.status === 0 };
       rows.push(row);
       log(`${row.pass ? "PASS" : "FAIL"} C2 ${row.check} :: ${row.actual}`);
     }
   } else {
-    log("NOTE C2 backtest: scripts/backtest.ts is not in this tree yet (lane CORE); not run");
+    log("NOTE C2 backtest: scripts/backtest.ts is not in this tree yet (core build); not run");
   }
 
   await fetch(`${SANDBOX_URL}/sim/reset`, { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"scenario":"demo"}' });

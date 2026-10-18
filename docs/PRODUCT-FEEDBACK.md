@@ -1,7 +1,7 @@
 # Proof Before Pay — product feedback
 
 One section per tool we used, from building the add-on (2026-10-10). Concrete evidence for each point is in
-FRICTION-LOG.md and in `npm run verify` (logs in `apps/proof-before-pay/logs/verify-latest.txt`).
+FRICTION-LOG.md and in `npm run verify` (logs in `logs/verify-latest.txt`).
 
 ## MCP TypeScript SDK v2 (`@modelcontextprotocol/server`, `client`, `node`) 2.0.0
 - **What for:** the `proofpay` MCP server (8 tools, 6 UI resources) over Streamable HTTP; the browser host's MCP client;
@@ -67,7 +67,7 @@ FRICTION-LOG.md and in `npm run verify` (logs in `apps/proof-before-pay/logs/ver
 
 ## Playwright 1.63.0
 - **What for:** verify plays every beat headless through two nested iframes (host → sandbox proxy → view), asserts
-  card numbers inside the inner frame, saves `docs/screens/proof-before-pay/beat-<n>.png`.
+  card numbers inside the inner frame, saves `docs/screens/beat-<n>.png`.
 - **What worked:** `frameLocator` chains through the cross-origin proxy without special setup.
 - **Would build again:** yes.
 

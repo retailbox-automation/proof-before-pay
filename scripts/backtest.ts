@@ -1,6 +1,6 @@
 // Backtest (SPEC 3.5): which real contractor failures would the four gates have caught?
 // Input: data/backtest/engagements.anon.json, an anonymized ledger (no names, phones, addresses, license numbers).
-// Output: docs/proof-before-pay/BACKTEST.md + docs/proof-before-pay/backtest-summary.json. Deterministic, no model.
+// Output: docs/BACKTEST.md + docs/backtest-summary.json. Deterministic, no model.
 //
 //   node scripts/backtest.ts [--input <file>] [--md <file>] [--json <file>] [--check]
 //   --check  recompute and compare with the published files; exit 1 when they differ (used by npm run verify)
@@ -13,8 +13,8 @@ import { z } from "zod";
 export const APP_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const DEFAULTS = {
   input: "data/backtest/engagements.anon.json",
-  md: "../../docs/proof-before-pay/BACKTEST.md",
-  json: "../../docs/proof-before-pay/backtest-summary.json",
+  md: "docs/BACKTEST.md",
+  json: "docs/backtest-summary.json",
 } as const;
 
 export const PROBLEMS = [

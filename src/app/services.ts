@@ -7,7 +7,7 @@
 // SPI documents as experimental and for Auto-Match: our combination. Invoice, photos, checkout preparation and warranty
 // claims are partner-side extensions, not Alexa SPIs. Payment itself is never done here: Alexa+ owns checkout.
 // Base URLs come from env, so the camera simulator can be swapped for the real Partner API base and a
-// Playground token without code changes. Pure logic comes from src/core (lane CORE).
+// Playground token without code changes. Pure logic comes from src/core (core build).
 import type { Charge, Evidence, LicenseCheck, PaymentPlan, Photo, Professional, ScopeOfWork, SourceMode, VisitWindow } from "../core/types.ts";
 import { reconcile as coreReconcile } from "../core/reconcile.ts";
 import { lookupLicenseWithDiagnostics as coreLookupLicense } from "../core/registry/lookup.ts";

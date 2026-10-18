@@ -4,3 +4,6 @@ data/*
 dist/
 .pids/
 logs/
+
+# demo recordings (large binaries)
+docs/video/

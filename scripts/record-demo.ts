@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const OUT = join(ROOT, "..", "..", "docs", "video");
+const OUT = join(ROOT, "docs", "video");
 const host = process.argv.includes("--host") ? process.argv[process.argv.indexOf("--host") + 1] : "http://127.0.0.1:5178/";
 mkdirSync(OUT, { recursive: true });
 

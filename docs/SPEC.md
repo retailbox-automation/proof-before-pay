@@ -51,7 +51,7 @@ host simulator (5178) ──MCP 2025-11-25 Streamable HTTP──▶ proofpay MCP
 - `npm run demo` is fully offline (`REGISTRY_MODE=fixture`). `REGISTRY_MODE=auto` = fixture for numbers present in fixtures, live for any other number. No LLM anywhere; the host maps utterances to tools with deterministic patterns (Alexa+ supplies language understanding in the real product).
 - Every tool result carries `_meta.steps: Array<{ service, op, mode: SourceMode, ms, summary }>`; the host renders one chip per tool call plus one sub-chip per step with a mode badge (LIVE / FIXTURE / SANDBOX / SIMULATED).
 
-## 3. Core modules (pure logic first, I/O at the edges) — owner: lane CORE
+## 3. Core modules (pure logic first, I/O at the edges) — owner: core build
 
 Types: `src/core/types.ts` (shared contract; change only by agreement).
 
@@ -81,14 +81,14 @@ Tests: the demo case (exact numbers above); no license → all waits; consent mi
 Marketplace (`/spi/ListProfessionals`, `/spi/CreateBooking` with `stage` ESTIMATE|CONFIRMATION and `alexaBookingId`/`partnerBookingId`, `/spi/GetBooking`, `/spi/CancelBooking`, `/spi/invoice/:partnerBookingId`, `/spi/photos/:partnerBookingId`, `/spi/capture` partial capture), Ring simulator (`/ring/v1/history/devices/:id/events` with `Authorization: Bearer sandbox`), clock (`GET /sim/clock`, `POST /sim/advance { to }` emits due webhooks to `ADDON_WEBHOOK_URL` signed with `RING_SIGNING_KEY`, makes invoice/photos visible after the visit; `POST /sim/reset { scenario }`). Scenario data: `fixtures/demo/scenario.json`. Deterministic ids.
 
 ### 3.5 Backtest — `scripts/backtest.ts`
-Reads `data/backtest/engagements.anon.json` (anonymized ledger of the author's real contractor history, supplied separately — no names, phones, addresses, license numbers), applies gate rules (license gate, scope gate, visit gate, proof-before-payment gate) and prints/writes `docs/proof-before-pay/BACKTEST.md`: per gate how many real failures it would have caught, which it would not, and why. `npm run verify` re-runs it and fails if the published numbers differ.
+Reads `data/backtest/engagements.anon.json` (anonymized ledger of the author's real contractor history, supplied separately — no names, phones, addresses, license numbers), applies gate rules (license gate, scope gate, visit gate, proof-before-payment gate) and prints/writes `docs/BACKTEST.md`: per gate how many real failures it would have caught, which it would not, and why. `npm run verify` re-runs it and fails if the published numbers differ.
 
-## 4. App — owner: lane APP
+## 4. App — owner: app build
 - `server/server.ts` → MCP server `proofpay` (SDK v2, `@modelcontextprotocol/server` 2.0.0, strict 2025-11-25; serve 2026-07-28 from the same endpoint only if the SDK does it without hand-written protocol code, else FRICTION-LOG entry). Tools: `find_pros`, `book_job`, `cancel_booking`, `review_invoice`, `pay_proven`, `job_status`, `draft_note`. Plus `POST /webhooks/doorbell` (raw-body HMAC verify, store event, attach to the job by booking window + consent).
 - State per user (JSON file, atomic rename): jobs, scope, consent, stored camera events, plans, payments. Survives a new MCP session and a server restart.
 - MCP Apps views (`ui://proofpay/<view>.html`): pros list, scope, payment, confirm/receipt, status, draft note. Design guide forms: List / Card; one title, 1–2 fields, one action per item; max 5 rows ("+N more" beyond 3 on the scope card). Every evidence row shows its source and mode.
 - Host = Echo Show simulator: 1280×800 frame; text input (optional Web Speech); subtitles with seconds; chip per tool call + sub-chips per step with mode badges; card in sandboxed iframe from the second origin; "New session" (drops MCP session, keeps user state); "simulated time" button (calls sandbox `/sim/advance`); voice-code utterances masked as ••••; "Play demo" button that runs beats 1–5 with fixed pacing for recording.
-- `npm run demo` (build, start sandbox + server + host, open the host) and `npm run verify`: protocol checks (initialize → 2025-11-25, tools/list, every tool, ui:// readable, state survives New session and restart, unknown session → 404, foreign Origin → 403, webhook with bad signature → 401 and not stored), core unit tests, backtest numbers, headless browser run of every beat with a screenshot per beat in `docs/screens/proof-before-pay/` and assertions on card numbers. PASS/FAIL table, non-zero exit on failure.
+- `npm run demo` (build, start sandbox + server + host, open the host) and `npm run verify`: protocol checks (initialize → 2025-11-25, tools/list, every tool, ui:// readable, state survives New session and restart, unknown session → 404, foreign Origin → 403, webhook with bad signature → 401 and not stored), core unit tests, backtest numbers, headless browser run of every beat with a screenshot per beat in `docs/screens/` and assertions on card numbers. PASS/FAIL table, non-zero exit on failure.
 
 ## 5. Policy and honesty (must hold in code, cards and video)
 - §15 Bookings: read back booking details by voice before booking; written confirmation on the home card; cancel any time, including in a later session (`cancel_booking`).
@@ -107,7 +107,7 @@ Multiple trades, real marketplace, real lock, permit lookup beyond a flag, dispu
 
 ## 7. v2 — changes after the research pass (2026-10-10, supersede §1/§4/§5 where they conflict)
 
-Source: our research notes (not published; critic-corrected; file:line citations into the Alexa+ doc snapshots of 2026-10-03, re-checked live 2026-10-10).
+Source: our research notes (not published; file:line citations into snapshots of the public Alexa+ docs of 2026-10-03, re-checked live 2026-10-10).
 
 ### 7.1 Payment belongs to Alexa+ (blocking)
 Alexa+ docs: "The checkout flow is owned by Alexa+. Alexa+ handles voice PIN, payment instrument selection, and purchase confirmation — you don't implement payment UX." and "Don't implement payment UI (no card entry, no wallet display, no PIN prompts)", "Don't use tools/call for payment actions" (`implement-checkout-endpoints.txt:213, :236-237`).
@@ -138,7 +138,7 @@ No Alexa, Echo, Amazon or Ring logos or look-alike marks anywhere (Amazon refuse
 6. (warranty, a month later, new session) "That's covered: Bright Current's 90-day labor warranty runs to January 13. I can book a free return visit with the original scope and photos attached." — tool `warranty_callback` (sandbox booking at $0.00, evidence attached). Added under the owner's "do everything" instruction of 2026-10-10; both independent reviews recommended it (internal review notes, not published). Recurring services stay out of the demo (one README line only).
 
 ### 7.6 Numbers allowed in the video and README (exact wording)
-- Author's history (backtest, `docs/proof-before-pay/BACKTEST.md`): "Since we closed on our house in July, I've contacted 119 contractors and home-service companies and booked 13 jobs. Five went wrong." Not "36 / 24".
+- Author's history (backtest, `docs/BACKTEST.md`): "Since we closed on our house in July, I've contacted 119 contractors and home-service companies and booked 13 jobs. Five went wrong." Not "36 / 24".
 - "Florida received 4,847 unlicensed-activity complaints in one year." (DBPR ULA Report FY 2024-25, p.13)
 - "Florida paid $4.35 million in 2025 to homeowners harmed by licensed contractors." (DBPR 2025 Accomplishments, posted 2026-01-07)
 - "Americans filed 81,925 home-repair reports with the FTC in 2024." (say "reports", never "scams")

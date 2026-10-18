@@ -33,7 +33,7 @@ Payment belongs to Alexa+ (SPEC §7.1). The skill never collects payment, card d
 
 Touching a card button sends `Alexa.Presentation.APL.UserEvent` and takes the same path as the spoken line (Book, Pay, Draft a note, Yes).
 
-If a tool is not on the server yet (`prepare_checkout` and `warranty_callback` are being added by the APP lane), the skill checks `tools/list`, says "That step isn't available yet.", and logs `tool not available yet`. It does not fail.
+If a tool is not on the server yet (`prepare_checkout` and `warranty_callback` were added to the server later), the skill checks `tools/list`, says "That step isn't available yet.", and logs `tool not available yet`. It does not fail.
 
 Assumed contract for those two tools, so APP can match it or tell me otherwise:
 - First call with `{}`, then `{ confirm: true }` after the homeowner says yes.
@@ -44,7 +44,7 @@ Assumed contract for those two tools, so APP can match it or tell me otherwise:
 ## Run and test locally
 
 ```bash
-cd apps/proof-before-pay
+cd proof-before-pay
 npm run skill:test                     # 23 tests: demo flow against a live server, verifier, bundle
 npm run demo                           # sandbox 8791 + proofpay 8787 + host 5178 (fixture registry)
 PBP_TOKEN=pbp-sandbox-echo-demo npm run skill:start   # skill endpoint on http://127.0.0.1:8795/alexa
