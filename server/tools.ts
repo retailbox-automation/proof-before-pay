@@ -89,7 +89,9 @@ async function checkLicense(services: Services, steps: Steps, number: string, na
   } catch (e) {
     c = { query: number, found: false, records: [], active: false, claimedName: name, nameMatch: "n/a", verdict: "unavailable", source: { service: "Florida DBPR license search", mode: services.registryMode === "fixture" ? "fixture" : "live", asOf: new Date(now).toISOString(), ref: String(e) } };
   }
-  const fellBack = c.source.ref?.startsWith("live registry unavailable") ? " · live registry failed, recorded page used" : "";
+  const ref = c.source.ref ?? "";
+  const fellBack = ref.startsWith("live registry unavailable") ? " · live registry failed, recorded page used"
+    : / min ago, cached\)$/.test(ref) ? ` · live answer cached ${ref.match(/from (\d+) min ago/)?.[1] ?? "<10"} min ago` : "";
   steps.add({ service: REGISTRY, op, mode: c.source.mode, ms: Math.round(performance.now() - t0), summary: verdictSummary(c) + fellBack });
   return c;
 }

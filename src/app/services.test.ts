@@ -36,3 +36,23 @@ test("registry: a live number falls back to its recorded page when the live regi
     assert.equal(none.source.mode, "live");
   } finally { globalThis.fetch = realFetch; }
 });
+
+test("registry: a live answer is cached for 10 minutes and the cached answer says so", async () => {
+  const { readFileSync } = await import("node:fs");
+  const page = readFileSync(new URL("../../fixtures/registry/dbpr-not-found.sample.html", import.meta.url), "latin1");
+  const realFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => { calls++; return new Response(page, { status: 200, headers: { "Content-Type": "text/html" } }); }) as typeof fetch;
+  try {
+    // The recorded empty page echoes EC99000101, so the live answer is about that number.
+    const s = createServices(envFromProcess({ REGISTRY_MODE: "auto", REGISTRY_LIVE_NUMBERS: "EC99000101" }));
+    const first = await s.lookupLicense("EC99000101", "Cache Test Electric", Date.now());
+    assert.equal(first.verdict, "not_found");
+    assert.equal(first.source.mode, "live");
+    assert.equal(calls, 3, "three HTTP calls to the registry");
+    const second = await s.lookupLicense("EC99000101", "Cache Test Electric", Date.now());
+    assert.equal(calls, 3, "no new registry call");
+    assert.equal(second.source.mode, "live");
+    assert.match(second.source.ref ?? "", / \(live answer from 1 min ago, cached\)$/);
+  } finally { globalThis.fetch = realFetch; }
+});
