@@ -89,7 +89,9 @@ request signature and timestamp and refuses anything else.
 `npm run public` (`scripts/public.ts`) runs the same servers behind one port: `/` simulator, `/mcp` MCP server,
 `/sandbox/t/<account>/…` that account's sandbox tenant, `/alexa` skill endpoint, `/healthz`. The cards are served from a
 second origin (`CARDS_ORIGIN`), as MCP Apps requires for web hosts. `Dockerfile` builds it. There are no secrets in the
-deployment; the camera webhook signing key is generated at start.
+deployment; the camera webhook signing key is generated at start. The `echo-*` accounts belong to the real Echo Show
+(the skill reaches the MCP server inside the container), so the public side refuses them; the operator resets or moves
+that demo's clock from inside the container with `node scripts/sandbox-admin.ts reset|demo|warranty`.
 
 ## How AI was used
 - **In the product:** no model anywhere in the demo path. The invoice check is fixed rules (`reconcile-v1`), the
