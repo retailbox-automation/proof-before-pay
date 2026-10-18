@@ -1,0 +1,248 @@
+{
+  "tools": [
+    {
+      "name": "find_pros",
+      "title": "Find licensed pros",
+      "description": "Find pros for a home job on the marketplace and check each license in the Florida license registry. Pros whose license is not verified are left out.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "trade": {
+            "type": "string",
+            "enum": [
+              "electrician"
+            ],
+            "description": "Trade needed"
+          },
+          "job_summary": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 200,
+            "description": "What needs doing, in the homeowner's words"
+          }
+        },
+        "required": [
+          "trade",
+          "job_summary"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "openWorldHint": true
+      },
+      "_meta": {
+        "ui": {
+          "resourceUri": "ui://proofpay/pros.html"
+        },
+        "ui/resourceUri": "ui://proofpay/pros.html"
+      }
+    },
+    {
+      "name": "book_job",
+      "title": "Book a pro",
+      "description": "Book one of the pros from the last search. confirm=false gets an estimate and reads the booking back for voice confirmation; confirm=true books it after the homeowner said yes.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "pro_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,32}$",
+            "description": "proId from find_pros"
+          },
+          "confirm": {
+            "default": false,
+            "description": "true only after the homeowner confirmed the read-back",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pro_id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "openWorldHint": true
+      },
+      "_meta": {
+        "ui": {
+          "resourceUri": "ui://proofpay/scope.html"
+        },
+        "ui/resourceUri": "ui://proofpay/scope.html"
+      }
+    },
+    {
+      "name": "cancel_booking",
+      "title": "Cancel a booking",
+      "description": "Cancel the current booking, also in a later conversation. confirm=false reads the booking and cancellation policy back; confirm=true cancels after the homeowner said yes.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "description": "Job id such as J1; defaults to the current job",
+            "type": "string",
+            "pattern": "^J\\d{1,4}$"
+          },
+          "confirm": {
+            "default": false,
+            "type": "boolean"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
+      },
+      "_meta": {
+        "ui": {
+          "resourceUri": "ui://proofpay/scope.html"
+        },
+        "ui/resourceUri": "ui://proofpay/scope.html"
+      }
+    },
+    {
+      "name": "review_invoice",
+      "title": "Check the invoice",
+      "description": "Check the pro's invoice against the agreed scope with deterministic rules: license re-check, visit from front door camera arrive/leave events, and photos per item. Returns what can be paid now and what waits.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "description": "Job id such as J1; defaults to the current job",
+            "type": "string",
+            "pattern": "^J\\d{1,4}$"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "openWorldHint": true
+      },
+      "_meta": {
+        "ui": {
+          "resourceUri": "ui://proofpay/payment.html"
+        },
+        "ui/resourceUri": "ui://proofpay/payment.html"
+      }
+    },
+    {
+      "name": "prepare_checkout",
+      "title": "Prepare checkout for the proven items",
+      "description": "Prepare a checkout for only the proven items of the last invoice check. Takes no payment data; Alexa+ completes the payment with the customer's voice code and saved card.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "description": "Job id such as J1; defaults to the current job",
+            "type": "string",
+            "pattern": "^J\\d{1,4}$"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "job_status",
+      "title": "What's left on a job",
+      "description": "Say what is still open on the current job (unproven items, charges outside the scope, unpaid amounts), from saved state. Works in any later conversation.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "description": "Job id such as J1; defaults to the current job",
+            "type": "string",
+            "pattern": "^J\\d{1,4}$"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "ui": {
+          "resourceUri": "ui://proofpay/status.html"
+        },
+        "ui/resourceUri": "ui://proofpay/status.html"
+      }
+    },
+    {
+      "name": "draft_note",
+      "title": "Draft a note to the pro",
+      "description": "Draft a plain note to the pro about what is still open. The homeowner sends it; this add-on never sends messages.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "description": "Job id such as J1; defaults to the current job",
+            "type": "string",
+            "pattern": "^J\\d{1,4}$"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "openWorldHint": false
+      },
+      "_meta": {
+        "ui": {
+          "resourceUri": "ui://proofpay/draft.html"
+        },
+        "ui/resourceUri": "ui://proofpay/draft.html"
+      }
+    },
+    {
+      "name": "warranty_callback",
+      "title": "Warranty return visit",
+      "description": "Check whether a problem after a finished job is covered by the pro's labor warranty and, after the homeowner confirms, book a free return visit with the original scope, photos and visit log attached. confirm=false checks and offers; confirm=true books.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "issue": {
+            "description": "What is wrong, in the homeowner's words; may be omitted with confirm=true to accept the offer just read back",
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 200
+          },
+          "confirm": {
+            "default": false,
+            "description": "true only after the homeowner accepted the offered return visit",
+            "type": "boolean"
+          },
+          "job_id": {
+            "description": "Job id such as J1; defaults to the current job",
+            "type": "string",
+            "pattern": "^J\\d{1,4}$"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "openWorldHint": true
+      },
+      "_meta": {
+        "ui": {
+          "resourceUri": "ui://proofpay/warranty.html"
+        },
+        "ui/resourceUri": "ui://proofpay/warranty.html"
+      }
+    }
+  ]
+}

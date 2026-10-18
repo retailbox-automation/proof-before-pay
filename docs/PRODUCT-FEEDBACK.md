@@ -4,7 +4,7 @@ One section per tool we used, from building the add-on (2026-10-10). Concrete ev
 FRICTION-LOG.md and in `npm run verify` (logs in `apps/proof-before-pay/logs/verify-latest.txt`).
 
 ## MCP TypeScript SDK v2 (`@modelcontextprotocol/server`, `client`, `node`) 2.0.0
-- **What for:** the `proofpay` MCP server (7 tools, 6 UI resources) over Streamable HTTP; the browser host's MCP client;
+- **What for:** the `proofpay` MCP server (8 tools, 6 UI resources) over Streamable HTTP; the browser host's MCP client;
   verify's protocol checks.
 - **What worked:** strict 2025-11-25 with one option (`supportedProtocolVersions`), header validation done for us
   (verify N5–N7: old/unknown `MCP-Protocol-Version` → 400), Origin/Host guards as one-liners (N2: foreign Origin → 403),
@@ -23,7 +23,7 @@ FRICTION-LOG.md and in `npm run verify` (logs in `apps/proof-before-pay/logs/ver
   (proxy ready → resource ready → initialized → tool input → tool result → teardown) worked first time; `ui/message`
   lets a tap on a card CTA ("Pay $1,050") arrive as the user's next turn (verify B8); the cross-origin sandbox holds
   (B11: host cannot read the card).
-- **What didn't:** ~591 KB per view, 442 KB of it zod (FRICTION-LOG 3); no scale signal in `hostContext`, so the view
+- **What didn't:** ~612 KB per view, 442 KB of it zod (FRICTION-LOG 3); no scale signal in `hostContext`, so the view
   fits itself (FRICTION-LOG 4).
 - **Onboarding:** quick, thanks to the `basic-host` example in the package.
 - **Would build again:** yes; would like a slim `App` build.

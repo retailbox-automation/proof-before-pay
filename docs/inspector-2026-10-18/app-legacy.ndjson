@@ -1,0 +1,8 @@
+{"hasApp":true,"toolName":"find_pros","resourceUri":"ui://proofpay/pros.html","csp":{"resourceDomains":["http://127.0.0.1:8787"]},"resourceMimeType":"text/html;profile=mcp-app"}
+{"hasApp":true,"toolName":"book_job","resourceUri":"ui://proofpay/scope.html","csp":{"resourceDomains":["http://127.0.0.1:8787"]},"resourceMimeType":"text/html;profile=mcp-app"}
+{"hasApp":true,"toolName":"cancel_booking","resourceUri":"ui://proofpay/scope.html","csp":{"resourceDomains":["http://127.0.0.1:8787"]},"resourceMimeType":"text/html;profile=mcp-app"}
+{"hasApp":true,"toolName":"review_invoice","resourceUri":"ui://proofpay/payment.html","csp":{"resourceDomains":["http://127.0.0.1:8787"]},"resourceMimeType":"text/html;profile=mcp-app"}
+{"hasApp":false,"toolName":"prepare_checkout"}
+{"hasApp":true,"toolName":"job_status","resourceUri":"ui://proofpay/status.html","csp":{"resourceDomains":["http://127.0.0.1:8787"]},"resourceMimeType":"text/html;profile=mcp-app"}
+{"hasApp":true,"toolName":"draft_note","resourceUri":"ui://proofpay/draft.html","csp":{"resourceDomains":["http://127.0.0.1:8787"]},"resourceMimeType":"text/html;profile=mcp-app"}
+{"hasApp":true,"toolName":"warranty_callback","resourceUri":"ui://proofpay/warranty.html","csp":{"resourceDomains":["http://127.0.0.1:8787"]},"resourceMimeType":"text/html;profile=mcp-app"}

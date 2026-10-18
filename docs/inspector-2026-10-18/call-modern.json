@@ -1,0 +1,169 @@
+{
+  "_meta": {
+    "io.modelcontextprotocol/serverInfo": {
+      "name": "proofpay",
+      "title": "Proof Before Pay",
+      "version": "0.1.0"
+    },
+    "steps": [
+      {
+        "service": "Marketplace",
+        "op": "ListProfessionals (Browse-and-Choose discovery)",
+        "mode": "sandbox",
+        "ms": 1,
+        "summary": "3 electricians nearby"
+      },
+      {
+        "service": "Florida license registry",
+        "op": "license lookup EC99000101",
+        "mode": "fixture",
+        "ms": 1,
+        "summary": "found · Current, Active · expires 08/31/2028 · name match"
+      },
+      {
+        "service": "Florida license registry",
+        "op": "license lookup EC99000102",
+        "mode": "fixture",
+        "ms": 0,
+        "summary": "found · Current, Active · expires 08/31/2028 · name match"
+      },
+      {
+        "service": "Florida license registry",
+        "op": "license lookup EC99000103",
+        "mode": "fixture",
+        "ms": 0,
+        "summary": "0 records · not found"
+      }
+    ]
+  },
+  "content": [
+    {
+      "type": "text",
+      "text": "Three electricians nearby. Quick Volt's license isn't in Florida's registry, so I left them out. Bright Current is licensed, 4.8 stars, 1,120 dollars. Want them?"
+    }
+  ],
+  "structuredContent": {
+    "speech": "Three electricians nearby. Quick Volt's license isn't in Florida's registry, so I left them out. Bright Current is licensed, 4.8 stars, 1,120 dollars. Want them?",
+    "seconds": 10,
+    "view": "pros",
+    "card": {
+      "view": "pros",
+      "layout": "list",
+      "title": "Electricians near you · license checked",
+      "rows": [
+        {
+          "state": "ok",
+          "kind": "pro",
+          "label": "Bright Current Electric",
+          "meta": {
+            "rating": "4.8",
+            "reviews": "(212)",
+            "estimate": "$1,120 estimate"
+          },
+          "status": "Verified",
+          "detail": "License EC99000101 · active to 08/31/2028",
+          "source": "Florida license registry",
+          "mode": "fixture",
+          "action": {
+            "label": "Choose",
+            "message": "Book Bright Current."
+          }
+        },
+        {
+          "state": "ok",
+          "kind": "pro",
+          "label": "Harbor Line Electrical",
+          "meta": {
+            "rating": "4.6",
+            "reviews": "(98)",
+            "estimate": "$1,260 estimate"
+          },
+          "status": "Verified",
+          "detail": "License EC99000102 · active to 08/31/2028",
+          "source": "Florida license registry",
+          "mode": "fixture",
+          "action": {
+            "label": "Choose",
+            "message": "Book Harbor Line."
+          }
+        },
+        {
+          "state": "struck",
+          "kind": "excluded",
+          "label": "Quick Volt Pros",
+          "status": "Left out",
+          "detail": "License EC99000103 not found",
+          "source": "Florida license registry",
+          "mode": "fixture"
+        }
+      ],
+      "footer": "Source: Florida license registry · registry as of Oct 9, 11:30 PM"
+    },
+    "data": {
+      "pros": [
+        {
+          "proId": "P1",
+          "businessName": "Bright Current Electric",
+          "rating": 4.8,
+          "reviewCount": 212,
+          "estimate": 112000,
+          "eligible": true,
+          "license": {
+            "number": "EC99000101",
+            "verdict": "verified",
+            "status": "Current, Active",
+            "expires": "08/31/2028",
+            "source": {
+              "service": "Florida DBPR license search",
+              "mode": "fixture",
+              "ref": "fixtures/registry/dbpr-found.sample.html",
+              "asOf": "10/09/2026 11:30 PM"
+            }
+          }
+        },
+        {
+          "proId": "P2",
+          "businessName": "Harbor Line Electrical",
+          "rating": 4.6,
+          "reviewCount": 98,
+          "estimate": 126000,
+          "eligible": true,
+          "license": {
+            "number": "EC99000102",
+            "verdict": "verified",
+            "status": "Current, Active",
+            "expires": "08/31/2028",
+            "source": {
+              "service": "Florida DBPR license search",
+              "mode": "fixture",
+              "ref": "fixtures/registry/dbpr-found-2.sample.html",
+              "asOf": "10/09/2026 11:30 PM"
+            }
+          }
+        },
+        {
+          "proId": "P3",
+          "businessName": "Quick Volt Pros",
+          "rating": 4.9,
+          "reviewCount": 37,
+          "estimate": 94000,
+          "eligible": false,
+          "license": {
+            "number": "EC99000103",
+            "verdict": "not_found",
+            "status": null,
+            "expires": null,
+            "source": {
+              "service": "Florida DBPR license search",
+              "mode": "fixture",
+              "ref": "fixtures/registry/dbpr-not-found.sample.html",
+              "asOf": "2026-10-14T22:00:00.000Z"
+            }
+          }
+        }
+      ],
+      "recommendedProId": "P1",
+      "checkedAt": "2026-10-14T22:00:00.000Z"
+    }
+  }
+}
