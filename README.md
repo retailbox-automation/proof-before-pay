@@ -116,6 +116,7 @@ that demo's clock from inside the container with `node scripts/sandbox-admin.ts 
 - Friction log (15 entries): `docs/FRICTION-LOG.md` · product feedback: `docs/PRODUCT-FEEDBACK.md` · feature
   requests: `docs/FEATURE-REQUESTS.md`
 - Alexa skill on a real Echo Show: `skill/README.md`
+- The license check as a standalone open-source package: [fl-license-check](https://github.com/retailbox-automation/fl-license-check)
 - Font: Inter from `@fontsource/inter` 5.2.8, SIL Open Font License 1.1, served locally (no Google Fonts request).
 
 | Port / env | Default | What |
