@@ -1,6 +1,6 @@
 # Proof Before Pay — demo video script (target 2:40, hard limit < 3:00)
 
-Rules this script follows: judges may stop at 3:00, so the mechanism is inside the first 60 s and the video opens with the result; no third-party logos or music; the Alexa+ experience is labelled "simulated in our web host"; numbers only from SPEC §7.6 (backtest + DBPR + FTC); first-person voice-over is recorded live by the author (no synthetic voice for the author). Alexa's lines are on-screen subtitles in the simulator; if they are voiced, the voice is labelled "simulated Alexa voice".
+Rules this script follows: judges may stop at 3:00, so the mechanism is inside the first 60 s and the video opens with the result; no third-party logos; music only under a licence that allows it (YouTube Audio Library, attribution not required); the Alexa+ experience is labelled as simulated; numbers only from SPEC §7.6 (backtest + DBPR + FTC). The first-person voice-over is the author's own voice, cloned from his recordings (ElevenLabs); Alexa's lines use a stock synthetic voice, labelled "simulated voice" on screen.
 
 Recording setup: `npm run demo` → host http://127.0.0.1:5178/ at 1920×1200 → "Play demo" runs beats 1–6 with fixed pacing. Record the screen at 60 fps; record the voice-over separately and lay it over. Keep the "Developer view" panel visible in the "How it works" segment only (crop to the device elsewhere).
 

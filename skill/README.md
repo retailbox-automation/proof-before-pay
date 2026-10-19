@@ -57,9 +57,13 @@ Env for `skill:start`: `SKILL_PORT` (8795), `SKILL_HOST` (127.0.0.1), `MCP_URL` 
 "Simulated time" for the device run means advancing the sandbox clock, which delivers the camera webhooks and posts the invoice. Press the button in the host simulator, or run:
 `curl -X POST -H 'Content-Type: application/json' -d '{"to":"demo"}' http://127.0.0.1:8791/sim/advance`
 
-## Deploy (a): own HTTPS endpoint through a tunnel (recommended, no AWS account, no card)
+## Deploy (hosted): what the demo skill uses
 
-The skill endpoint runs on the same Mac as proofpay and calls it at `127.0.0.1`. Only the skill endpoint is public, and only while recording. The proofpay server stays localhost-only, because its Host validation rejects public hostnames.
+The skill in the developer console points at the hosted deployment's `/alexa` (`npm run public`, see "Hosted deployment" in the main README). The skill endpoint and proofpay run in the same container, and the skill calls proofpay at `127.0.0.1` as the `echo-demo` account. The public side refuses the `echo-*` accounts; the operator resets or moves that demo's clock from inside the container with `node scripts/sandbox-admin.ts reset|demo|warranty`.
+
+## Deploy (a): own HTTPS endpoint through a tunnel (local, no AWS account, no card)
+
+The skill endpoint runs on the same Mac as proofpay and calls it at `127.0.0.1`. Only the skill endpoint is public, and only while recording. In this local setup the proofpay server stays localhost-only, because its Host validation rejects public hostnames that are not listed in `PUBLIC_HOSTNAMES`.
 
 1. Start the stack: `npm run demo`. In a second terminal: `PBP_TOKEN=pbp-sandbox-echo-demo npm run skill:start`.
 2. Start the tunnel: `cloudflared tunnel --url http://127.0.0.1:8795`. It prints `https://<random>.trycloudflare.com`. `ngrok http 8795` also works; both are installed on the build Mac.
@@ -85,7 +89,7 @@ Steps, if the blockers below are lifted:
 
 Blockers:
 - Amazon's page (updated Mar 16, 2026) says Alexa-hosted runs Node.js 16.x, and you can't change it. Node 16 has no global `fetch`, and the MCP client needs it. The bundle is tested only on the current Node, in `skill.test.ts`.
-- proofpay would have to be public. It currently accepts only localhost Host headers, and its bearer token is a guessable sandbox literal. Publishing it needs an APP-side change: a Host allowlist and real auth.
+- An Alexa-hosted skill would call proofpay from outside. The hosted deployment refuses the `echo-*` accounts from the public side, and their bearer token is a guessable sandbox literal, so this path would need real auth for the skill's account. The hosted path above avoids it: the skill and proofpay share one container.
 
 Own AWS Lambda (`nodejs22.x`) would avoid the Node 16 problem. It needs an AWS account with a card on file, so it is a payment decision for the owner, and it is not used here.
 
@@ -117,5 +121,5 @@ Only documented (needs the device):
 1. Amazon developer account on the same Amazon login the Echo Show 8 is registered to.
 2. Device setup and registration, plus any Alexa+ opt-in prompts on the Echo Show 8.
 3. Creating the skill in the console and enabling it in the Alexa app (Your Skills → Dev).
-4. Starting and stopping the public tunnel for the recording session.
+4. Starting and stopping the public tunnel for the recording session (deploy path (a) only).
 5. No certification and no publishing. Not needed for the hackathon.
