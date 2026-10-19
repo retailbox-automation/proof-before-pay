@@ -2,11 +2,11 @@
   "engine": "backtest-v1",
   "input": {
     "file": "data/backtest/engagements.anon.json",
-    "sha256": "42a5d664de489a45bc13385002dfc6b39268b15eff8e1acef7bbc5665e0f7ea7",
+    "sha256": "6d08cd5b113f3e81500b004cd39370d48a4acea26b837ce720fdecd6d46b5d5c",
     "rows": 141
   },
   "window": {
-    "companiesSinceClosing": 119,
+    "companiesSinceClosing": 118,
     "engagementsSinceClosing": 136,
     "hiredSinceClosing": 13,
     "wentWrongSinceClosing": 5,

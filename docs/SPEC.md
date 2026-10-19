@@ -138,7 +138,7 @@ No Alexa, Echo, Amazon or Ring logos or look-alike marks anywhere (Amazon refuse
 6. (warranty, a month later, new session) "That's covered: Bright Current's 90-day labor warranty runs to January 13. I can book a free return visit with the original scope and photos attached." — tool `warranty_callback` (sandbox booking at $0.00, evidence attached). Added under the owner's "do everything" instruction of 2026-10-10; both independent reviews recommended it (internal review notes, not published). Recurring services stay out of the demo (one README line only).
 
 ### 7.6 Numbers allowed in the video and README (exact wording)
-- Author's history (backtest, `docs/BACKTEST.md`): "Since we closed on our house in July, I've contacted 119 contractors and home-service companies and booked 13 jobs. Five went wrong." Not "36 / 24".
+- Author's history (backtest, `docs/BACKTEST.md`): "Since we closed on our house in July, I've been in touch with 118 contractors and home-service companies and booked 13 jobs. Five went wrong." Not "36 / 24", not "119" (one company was counted twice under two spellings until 2026-10-19).
 - "Florida received 4,847 unlicensed-activity complaints in one year." (DBPR ULA Report FY 2024-25, p.13)
 - "Florida paid $4.35 million in 2025 to homeowners harmed by licensed contractors." (DBPR 2025 Accomplishments, posted 2026-01-07)
 - "Americans filed 81,925 home-repair reports with the FTC in 2024." (say "reports", never "scams")

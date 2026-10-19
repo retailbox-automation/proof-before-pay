@@ -195,7 +195,7 @@ export function renderMarkdown(result: BacktestResult, meta: InputMeta): string 
     const w = result.window;
     out.push("## Since the house closed");
     out.push("");
-    out.push("| Companies contacted | Engagements (company × job) | Jobs booked or paid | Went wrong | Went wrong, caught by at least one gate |");
+    out.push("| Companies in touch (reached out to or heard from) | Engagements (company × job) | Jobs booked or paid | Went wrong | Went wrong, caught by at least one gate |");
     out.push("|---:|---:|---:|---:|---:|");
     out.push(`| ${w.companiesSinceClosing ?? "n/a"} | ${w.engagementsSinceClosing} | ${w.hiredSinceClosing} | ${w.wentWrongSinceClosing} | ${w.wentWrongCaughtSinceClosing} (${pct(w.wentWrongCaughtSinceClosing, w.wentWrongSinceClosing)}) |`);
     out.push("");

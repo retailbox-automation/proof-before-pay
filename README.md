@@ -103,8 +103,8 @@ that demo's clock from inside the container with `node scripts/sandbox-admin.ts 
   the references.
 
 ## Why it matters
-- Author's history: "Since we closed on our house in July, I've contacted 119 contractors and home-service companies
-  and booked 13 jobs. Five went wrong." — [docs/BACKTEST.md](docs/BACKTEST.md) (anonymized ledger, 141 engagements; all 5
+- Author's history: "Since we closed on our house in July, I've been in touch with 118 contractors and home-service
+  companies and booked 13 jobs. Five went wrong." — [docs/BACKTEST.md](docs/BACKTEST.md) (anonymized ledger, 141 engagements; all 5
   caught by at least one gate).
 - "Florida received 4,847 unlicensed-activity complaints in one year." — Florida DBPR, ULA Report FY 2024-25, p.13.
 - "Florida paid $4.35 million in 2025 to homeowners harmed by licensed contractors." — Florida DBPR, 2025

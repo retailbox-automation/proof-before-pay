@@ -2175,7 +2175,7 @@
   "amount_quoted_usd": null,
   "amount_paid_usd": null,
   "month": "2026-09",
-  "vendor": "V117",
+  "vendor": "V071",
   "since_closing": true
  },
  {
@@ -2191,7 +2191,7 @@
   "amount_quoted_usd": null,
   "amount_paid_usd": null,
   "month": "2026-09",
-  "vendor": "V118",
+  "vendor": "V117",
   "since_closing": true
  },
  {
@@ -2223,7 +2223,7 @@
   "amount_quoted_usd": null,
   "amount_paid_usd": null,
   "month": "2026-09",
-  "vendor": "V119",
+  "vendor": "V118",
   "since_closing": true
  },
  {
@@ -2239,7 +2239,7 @@
   "amount_quoted_usd": null,
   "amount_paid_usd": null,
   "month": "2026-09",
-  "vendor": "V120",
+  "vendor": "V119",
   "since_closing": true
  },
  {
@@ -2255,7 +2255,7 @@
   "amount_quoted_usd": null,
   "amount_paid_usd": null,
   "month": "2026-09",
-  "vendor": "V121",
+  "vendor": "V120",
   "since_closing": true
  },
  {
@@ -2289,7 +2289,7 @@
   "amount_quoted_usd": 340,
   "amount_paid_usd": null,
   "month": "2026-09",
-  "vendor": "V122",
+  "vendor": "V121",
   "since_closing": true
  },
  {
@@ -2309,7 +2309,7 @@
   "amount_quoted_usd": null,
   "amount_paid_usd": null,
   "month": "2026-09",
-  "vendor": "V123",
+  "vendor": "V122",
   "since_closing": true
  },
  {
@@ -2373,7 +2373,7 @@
   "amount_quoted_usd": 759,
   "amount_paid_usd": null,
   "month": "2026-09",
-  "vendor": "V122",
+  "vendor": "V121",
   "since_closing": true
  }
 ]
