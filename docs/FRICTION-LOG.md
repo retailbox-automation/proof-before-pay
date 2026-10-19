@@ -112,16 +112,19 @@ build (2026-10-10; sizes in entry 3 re-measured 2026-10-18); entries 9–15 are 
 - **Severity:** low for v1. **Workaround:** the door code is shown and labelled "simulated (no lock API)" on the scope
   card and in the chip. **Suggestion:** a lock capability, or a documented hand-off to lock partners.
 
-## 8. `registerAppTool` fails at request time for a tool without a UI resource
+## 8. `registerAppTool` for a tool without a UI resource throws an unhelpful TypeError at registration
 
 - **Task:** register `prepare_checkout`, a tool that deliberately has no card (the checkout screen belongs to Alexa+).
-- **Command:** first `tools/call` after registering it with `registerAppTool(server, "prepare_checkout", { … })` and no
-  `_meta.ui`.
-- **Result:** `TypeError: Cannot read properties of undefined (reading 'ui')` inside `ext-apps/dist/src/server/index.js`,
-  surfaced to the client as `-32603 Internal error` on `initialize` (the server is built per session).
-- **Expected vs actual:** expected a plain tool, or an error at registration time; actual: a crash on the first request.
-- **Severity:** low. **Workaround:** `server.registerTool` for tools without a card. **Suggestion:** validate at
-  registration, or fall back to a plain tool.
+- **Command:** `registerAppTool(server, "prepare_checkout", { … })` with no `_meta` (so no `_meta.ui`). Reproduced on
+  2026-10-19 in a ten-line script: the call to `registerAppTool` itself throws.
+- **Result:** `TypeError: Cannot read properties of undefined (reading 'ui')` from `ext-apps/dist/src/server/index.js`,
+  thrown at registration. Our server is built per session (`buildMcpServer` runs on each `initialize`,
+  `server/server.ts:141`), so it surfaced to the client as `-32603 Internal error` on `initialize`.
+- **Expected vs actual:** expected a clear error that names the missing UI resource, or a fallback to a plain tool;
+  actual: a bare TypeError (reading 'ui') at registration, which in a per-session server shows up only as `-32603`
+  on `initialize`.
+- **Severity:** low. **Workaround:** `server.registerTool` for tools without a card. **Suggestion:** a clear error at
+  registration, or a fallback to a plain tool.
 - **Tool + version:** `@modelcontextprotocol/ext-apps` 2.0.0.
 
 ---
