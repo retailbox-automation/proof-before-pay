@@ -103,6 +103,8 @@ export function buildSkill(deps: SkillDeps) {
       speech = [opts.prefix, out.text, opts.suffix].filter(Boolean).join(" ");
       const doc = docFor(out.structured?.view, tool);
       render(h, doc, datasourceFor(doc, out.structured));
+      // The same line as a card in the Alexa app, so "the confirmation is in your Alexa app" is true for the skill too.
+      rb.withSimpleCard("Proof Before Pay", speech);
       log("tool", { tool, ms: out.ms, isError: out.isError, view: out.structured?.view ?? null, doc });
     } else if (out.kind === "missing") {
       speech = [TEXT.notAvailable, opts.suffix].filter(Boolean).join(" ");

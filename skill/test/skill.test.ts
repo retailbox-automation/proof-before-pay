@@ -109,6 +109,9 @@ test("beat 2 BookIntent -> book_job read-back, ConfirmIntent -> booked", async (
   r = await say({ intent: "ConfirmIntent" });
   assert.deepEqual(last().args, { pro_id: "P1", confirm: true });
   assert.match(speech(r), /^Booked\./);
+  // "The confirmation is in your Alexa app": the same line goes to the Alexa app as a simple card.
+  assert.equal(r.response.card?.type, "Simple");
+  assert.match(r.response.card?.content ?? "", /^Booked\./);
   assert.equal(attrs.pending, null);
 });
 
