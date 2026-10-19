@@ -45,7 +45,7 @@ Assumed contract for those two tools, so APP can match it or tell me otherwise:
 
 ```bash
 cd proof-before-pay
-npm run skill:test                     # 23 tests: demo flow against a live server, verifier, bundle
+npm run skill:test                     # the whole dialog against a real proofpay server, and 8 more check Amazon's request signature and timestamp (23 in all)
 npm run demo                           # sandbox 8791 + proofpay 8787 + host 5178 (fixture registry)
 PBP_TOKEN=pbp-sandbox-echo-demo npm run skill:start   # skill endpoint on http://127.0.0.1:8795/alexa
 ```
@@ -102,11 +102,14 @@ Verified by tests or a run:
 - The real entry points as separate processes (sandbox, proofpay, two skill endpoints): the full flow over HTTP. The strict endpoint rejects an unsigned request with 400.
 - The Lambda bundle (esbuild, cjs, target node16) answers through the live server on the current Node.
 
-Only documented (needs the device or the console):
+Verified in the Alexa developer console on 2026-10-18 (Development stage, endpoint = the hosted deployment's `/alexa`):
+- The interaction model builds in the console: build 0 errors / 0 warnings.
+- APL renders in the console's Device Display on Hub Landscape Medium (the Echo Show 8 profile): a seven-turn dialog (the sandbox clock is advanced by a script between booking and invoice), every spoken turn PASS: open, find pros, book, yes, invoice, pay the proven part, and "what's left" in a new session.
+- The live Amazon signing chain: the hosted endpoint always checks the signature and timestamp (`skipSignatureCheck: false` in `scripts/public.ts`), and every console request above passed it.
+
+Only documented (needs the device):
 - That "Alexa, open …" reaches a dev-stage skill on an Alexa+ Echo Show 8.
-- That APL renders there, and how it looks. The documents are JSON-checked: version 2024.3, colour tokens, no images or logos. They have not been rendered in the console's Device Display or on the device.
-- That the interaction model builds in the console.
-- The live Amazon signing chain currently served: only the saved 2023 chain was tested.
+- How APL looks on the device itself. The documents are JSON-checked: version 2024.3, colour tokens, no images or logos.
 - Deploy path (b).
 
 ## Human gates (nothing here creates accounts, deploys or publishes)
